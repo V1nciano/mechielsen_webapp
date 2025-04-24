@@ -21,18 +21,42 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // First check if the Flask server is running
+      const serverResponse = await fetch('http://localhost:5000/');
+      if (!serverResponse.ok) {
+        throw new Error('Flask server is niet gestart');
+      }
+
+      // Then attempt to login
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Login error:', error);
+        throw error;
+      }
+
+      if (!data?.session) {
+        throw new Error('Geen sessie ontvangen');
+      }
 
       toast.success('Succesvol ingelogd!');
       router.push('/dashboard');
     } catch (error) {
-      toast.error('Inloggen mislukt. Controleer je gegevens.');
       console.error('Login error:', error);
+      if (error instanceof Error) {
+        if (error.message.includes('Flask server')) {
+          toast.error('Flask server is niet gestart. Start de server en probeer opnieuw.');
+        } else if (error.message.includes('Invalid login credentials')) {
+          toast.error('Ongeldige inloggegevens. Controleer je e-mail en wachtwoord.');
+        } else {
+          toast.error(`Inloggen mislukt: ${error.message}`);
+        }
+      } else {
+        toast.error('Inloggen mislukt. Probeer het later opnieuw.');
+      }
     } finally {
       setLoading(false);
     }
@@ -58,6 +82,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
             <div className="space-y-2">
@@ -68,6 +93,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
               />
             </div>
             <Button 
