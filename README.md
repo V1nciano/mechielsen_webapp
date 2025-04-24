@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mechielsen Hydraulic Hose Connection Guide
 
-## Getting Started
+This application helps guide users through connecting hydraulic hoses using NFC tags and a Raspberry Pi Pico W with PN532 NFC reader.
 
-First, run the development server:
+## Setup
 
+### Prerequisites
+- Node.js and npm
+- Python 3.8+
+- Raspberry Pi Pico W with PN532 NFC reader
+- NFC tags for hydraulic hoses
+
+### Installation
+
+1. Install Python dependencies:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pip install -r requirements.txt
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install Node.js dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Start the Python server:
+```bash
+python server.py
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Start the Next.js development server:
+```bash
+npm run dev
+```
 
-## Learn More
+## Usage
 
-To learn more about Next.js, take a look at the following resources:
+1. Connect to the web application on your phone
+2. Follow the on-screen instructions to scan NFC tags
+3. View connection points and configuration settings
+4. Complete all hose connections as guided
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Frontend: Next.js web application
+- Backend: Flask server
+- Hardware: Raspberry Pi Pico W with PN532 NFC reader
 
-## Deploy on Vercel
+## API Endpoints
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/nfc-status`: Check if an NFC tag is detected
+- `/config`: Get configuration settings for the current setup
