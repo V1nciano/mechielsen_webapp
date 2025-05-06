@@ -151,7 +151,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Hydraulische Machines</h1>
+        <h1 className="text-3xl font-bold mb-8">Hydraulische Machines Mechielsen</h1>
         
         {error && (
           <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
