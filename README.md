@@ -1,36 +1,92 @@
 # Mechielsen Hydraulic Hose Connection Guide
 
-This application helps guide users through connecting hydraulic hoses using NFC tags and a Raspberry Pi Pico W with PN532 NFC reader.
+A modern web application that guides users through connecting hydraulic hoses using NFC technology. Built with Next.js, Supabase, and a comprehensive UI component library.
 
-## Setup
+## Features
 
-### Prerequisites
-- Node.js and npm
-- Python 3.8+
-- Raspberry Pi Pico W with PN532 NFC reader
-- NFC tags for hydraulic hoses
+- Interactive hose connection guidance
+- NFC tag scanning and validation
+- Real-time connection status updates
+- Modern, responsive UI
+- Secure authentication
+- Data persistence with Supabase
 
-### Installation
+## Tech Stack
 
-1. Install Python dependencies:
+- **Frontend**: Next.js 15.3.1 with React 19
+- **UI Components**: Radix UI
+- **Styling**: Tailwind CSS
+- **Backend**: Supabase
+- **Form Handling**: React Hook Form with Zod validation
+- **State Management**: React Hooks
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **Notifications**: Sonner
+
+## Prerequisites
+
+- Node.js 18.0.0 or higher
+- npm 9.0.0 or higher
+- Git
+
+## Installation
+
+1. Clone the repository:
 ```bash
-pip install -r requirements.txt
+git clone [your-repository-url]
+cd mechielsen_webapp
 ```
 
-2. Install Node.js dependencies:
+2. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Start the Python server:
-```bash
-python server.py
+3. Set up environment variables:
+Create a `.env.local` file in the root directory with the following variables:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-4. Start the Next.js development server:
+4. Start the development server:
 ```bash
 npm run dev
 ```
+
+The application will be available at `http://localhost:3000`
+
+## Available Scripts
+
+- `npm run dev` - Start development server with Turbopack
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+## Project Structure
+
+```
+mechielsen_webapp/
+├── app/              # Next.js app directory
+├── components/       # React components
+├── lib/             # Utility functions and configurations
+├── public/          # Static assets
+└── styles/          # Global styles
+```
+
+## Contributing
+
+1. Create a new branch for your feature
+2. Make your changes
+3. Submit a pull request
+
+## License
+
+[Your License]
+
+## Support
+
+For support, please [contact details or support channels]
 
 ## Usage
 
