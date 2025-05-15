@@ -9,6 +9,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function InstallationStepper({ installationId }: { installationId: string }) {
   const [step, setStep] = useState(0);
@@ -18,6 +19,7 @@ export default function InstallationStepper({ installationId }: { installationId
   const [error, setError] = useState<string | null>(null);
   const [steps, setSteps] = useState<any[]>([]);
   const router = useRouter();
+  const [origin, setOrigin] = useState('');
 
   useEffect(() => {
     const fetchMachineAndSteps = async () => {
@@ -130,6 +132,12 @@ export default function InstallationStepper({ installationId }: { installationId
 
     fetchMachineAndSteps();
   }, [installationId]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setOrigin(window.location.origin);
+    }
+  }, []);
 
   const handleNext = () => {
     if (step < steps.length - 1) {

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { QRCodeSVG } from 'qrcode.react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 interface Machine {
   id: string;
@@ -24,6 +26,9 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
+  const qrRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -137,6 +142,32 @@ export default function DashboardPage() {
     }
   };
 
+  // Download QR as PNG
+  const handleDownloadQR = () => {
+    if (!qrRef.current) return;
+    const svg = qrRef.current;
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const img = new window.Image();
+    img.onload = function () {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        const pngFile = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngFile;
+        downloadLink.download = `qr-${selectedMachine?.naam || 'machine'}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      }
+    };
+    img.src = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(svgString)));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -189,6 +220,9 @@ export default function DashboardPage() {
                     <p className="font-medium">{machine.debiet} l/min</p>
                   </div>
                 </div>
+                <Button className="w-full mb-2" onClick={e => { e.stopPropagation(); setSelectedMachine(machine); setQrDialogOpen(true); }} variant="secondary">
+                  Toon QR-code
+                </Button>
                 <Button className="w-full">
                   Start Installatie
                 </Button>
@@ -203,6 +237,23 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* QR Dialog */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent>
+          <DialogTitle>QR-code voor installatie</DialogTitle>
+          {selectedMachine && (
+            <div className="flex flex-col items-center gap-4">
+              <QRCodeSVG
+                ref={qrRef}
+                value={typeof window !== 'undefined' ? `${window.location.origin}/installation/${selectedMachine.id}` : `/installation/${selectedMachine.id}`}
+                size={200}
+              />
+              <Button onClick={handleDownloadQR} variant="outline">Download QR-code</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
