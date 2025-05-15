@@ -102,7 +102,7 @@ const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, backButton
             {selectedAttachment && (
               <QRCodeSVG
                 ref={qrRef}
-                value={`${window.location.origin}/attachments/${selectedAttachment.id}`}
+                value={`${window.location.origin}/installations/${selectedAttachment.id}`}
                 size={256}
                 level="H"
                 includeMargin={true}
