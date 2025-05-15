@@ -45,7 +45,7 @@ export default function InstallationStepper() {
     fetch(`/api/installatie_stappen?attachmentId=${attachmentId}`)
       .then(res => res.json())
       .then(data => setSteps(data));
-    fetch(`/api/attachments/${attachmentId}`)
+    fetch(`/api/attachment/${attachmentId}`)
       .then(res => res.json())
       .then(data => setAttachment(data));
     setNfcVerified(false);
