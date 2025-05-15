@@ -172,15 +172,20 @@ export default function InstallationStepper({ installationId }: { installationId
 
   return (
     <div className="max-w-md mx-auto mt-12 p-6 bg-gray-100 rounded-xl shadow-lg">
-      <div className="mb-8 flex justify-center gap-2">
-        {steps.map((s, idx) => (
-          <div
-            key={s.label}
-            className={`w-8 h-8 flex items-center justify-center rounded-full border-2 ${idx === step ? 'bg-primary text-white border-primary' : 'bg-white text-gray-400 border-gray-300'} font-bold transition-all`}
-          >
-            {idx + 1}
-          </div>
-        ))}
+      <div className="mb-8 flex items-center justify-between">
+        <Button variant="outline" onClick={() => router.push('/dashboard')}>
+          Terug naar Dashboard
+        </Button>
+        <div className="flex gap-2">
+          {steps.map((s, idx) => (
+            <div
+              key={s.label}
+              className={`w-8 h-8 flex items-center justify-center rounded-full border-2 ${idx === step ? 'bg-primary text-white border-primary' : 'bg-white text-gray-400 border-gray-300'} font-bold transition-all`}
+            >
+              {idx + 1}
+            </div>
+          ))}
+        </div>
       </div>
       <div>{steps[step].content}</div>
       <div className="flex justify-between mt-8">
