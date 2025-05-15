@@ -1,10 +1,20 @@
 'use client';
+import Image from 'next/image';
 
-export default function PictureInstructions({ imageUrl }: { imageUrl: string }) {
+interface PictureInstructionsProps {
+  imageUrl: string;
+}
+
+export default function PictureInstructions({ imageUrl }: PictureInstructionsProps) {
   return (
-    <div className="mb-4">
-      <h2 className="text-xl font-bold mb-2">Afbeelding</h2>
-      <img src={imageUrl} alt="Instructie afbeelding" className="rounded shadow" />
+    <div className="relative w-full aspect-video">
+      <Image
+        src={imageUrl}
+        alt="Installatie instructie"
+        fill
+        className="object-contain rounded-lg"
+        priority
+      />
     </div>
   );
 } 

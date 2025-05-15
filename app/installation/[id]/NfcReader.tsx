@@ -3,6 +3,30 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 
+interface NDEFRecord {
+  recordType: string;
+  data: Uint8Array;
+}
+
+interface NDEFMessage {
+  records: NDEFRecord[];
+}
+
+interface NDEFReadingEvent {
+  message: NDEFMessage;
+}
+
+interface NDEFReader {
+  scan(): Promise<void>;
+  onreading: ((event: NDEFReadingEvent) => void) | null;
+}
+
+declare global {
+  interface Window {
+    NDEFReader: new () => NDEFReader;
+  }
+}
+
 export default function NfcReader({ onScan }: { onScan?: (data: string) => void }) {
   const [nfcData, setNfcData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -13,9 +37,9 @@ export default function NfcReader({ onScan }: { onScan?: (data: string) => void 
 
     if ('NDEFReader' in window) {
       try {
-        const ndef = new (window as any).NDEFReader();
+        const ndef = new window.NDEFReader();
         await ndef.scan();
-        ndef.onreading = (event: any) => {
+        ndef.onreading = (event: NDEFReadingEvent) => {
           const decoder = new TextDecoder();
           for (const record of event.message.records) {
             if (record.recordType === "text") {
@@ -26,8 +50,9 @@ export default function NfcReader({ onScan }: { onScan?: (data: string) => void 
           }
         };
         alert('Scan een NFC tag met je telefoon');
-      } catch (err: any) {
-        setError('Fout bij lezen NFC tag: ' + err.message);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Onbekende fout';
+        setError('Fout bij lezen NFC tag: ' + errorMessage);
       }
     } else {
       setError('Web NFC wordt niet ondersteund op dit apparaat/browser.');

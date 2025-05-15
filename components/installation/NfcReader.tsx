@@ -3,42 +3,33 @@
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 
-export default function NfcReader({ onScan }: { onScan?: (data: string) => void }) {
-  const [nfcData, setNfcData] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export default function NfcReader() {
+  const [isVerified, setIsVerified] = useState(false);
 
-  const readNfcTag = async () => {
-    setError(null);
-    setNfcData(null);
-
-    if ('NDEFReader' in window) {
-      try {
-        const ndef = new (window as any).NDEFReader();
-        await ndef.scan();
-        ndef.onreading = (event: any) => {
-          const decoder = new TextDecoder();
-          for (const record of event.message.records) {
-            if (record.recordType === "text") {
-              const data = decoder.decode(record.data);
-              setNfcData(data);
-              if (onScan) onScan(data);
-            }
-          }
-        };
-        alert('Scan een NFC tag met je telefoon');
-      } catch (err: any) {
-        setError('Fout bij lezen NFC tag: ' + err.message);
-      }
-    } else {
-      setError('Web NFC wordt niet ondersteund op dit apparaat/browser.');
-    }
+  const handleVerify = () => {
+    setIsVerified(true);
   };
 
   return (
-    <div>
-      <Button onClick={readNfcTag}>Scan NFC Tag</Button>
-      {nfcData && <div className="mt-4">NFC Data: {nfcData}</div>}
-      {error && <div className="mt-4 text-red-600">{error}</div>}
+    <div className="space-y-4">
+      <h2 className="text-xl font-bold">Verificatie</h2>
+      <p className="text-gray-600">
+        Controleer of de slang goed is aangesloten.
+      </p>
+      
+      {!isVerified ? (
+        <Button 
+          onClick={handleVerify} 
+          className="w-full"
+        >
+          Verifiëren
+        </Button>
+      ) : (
+        <div className="p-4 bg-green-100 text-green-700 rounded-md">
+          <p>✓ Slang is goed aangesloten</p>
+          <p className="text-sm mt-2">Je kunt nu op voltooien klikken om door te gaan.</p>
+        </div>
+      )}
     </div>
   );
 } 

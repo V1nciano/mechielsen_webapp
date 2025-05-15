@@ -9,17 +9,31 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { QRCodeSVG } from 'qrcode.react';
+
+interface MachineSpecs {
+  id: string;
+  naam: string;
+  type: string;
+  werkdruk: number;
+  max_druk: number;
+  debiet: number;
+  vermogen: number;
+  beschrijving: string;
+}
+
+interface InstallationStep {
+  label: string;
+  content: React.ReactNode;
+}
 
 export default function InstallationStepper({ installationId }: { installationId: string }) {
   const [step, setStep] = useState(0);
   const [showDialog, setShowDialog] = useState(false);
-  const [machineSpecs, setMachineSpecs] = useState<any>(null);
+  const [machineSpecs, setMachineSpecs] = useState<MachineSpecs | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [steps, setSteps] = useState<any[]>([]);
+  const [steps, setSteps] = useState<InstallationStep[]>([]);
   const router = useRouter();
-  const [origin, setOrigin] = useState('');
 
   useEffect(() => {
     const fetchMachineAndSteps = async () => {
@@ -68,11 +82,11 @@ export default function InstallationStepper({ installationId }: { installationId
       }
 
       // Selecteer de eerste stap van elk type
-      const uitlegStap = stappen.find((stap: any) => stap.beschrijving && !stap.afbeelding_url && !stap.nfc_vereist);
-      const fotoStap = stappen.find((stap: any) => stap.afbeelding_url);
-      const nfcStap = stappen.find((stap: any) => stap.nfc_vereist);
+      const uitlegStap = stappen.find((stap) => stap.beschrijving && !stap.afbeelding_url && !stap.nfc_vereist);
+      const fotoStap = stappen.find((stap) => stap.afbeelding_url);
+      const nfcStap = stappen.find((stap) => stap.nfc_vereist);
 
-      const dynamicSteps = [];
+      const dynamicSteps: InstallationStep[] = [];
       if (uitlegStap) {
         dynamicSteps.push({
           label: `Stap 1`,
@@ -132,12 +146,6 @@ export default function InstallationStepper({ installationId }: { installationId
 
     fetchMachineAndSteps();
   }, [installationId]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setOrigin(window.location.origin);
-    }
-  }, []);
 
   const handleNext = () => {
     if (step < steps.length - 1) {
