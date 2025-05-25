@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import AttachmentList from '@/components/dashboard/AttachmentList';
 import type { Attachment } from '@/components/dashboard/AttachmentList';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Settings } from 'lucide-react';
 
 export default function AttachmentsPage() {
   const params = useParams();
@@ -35,13 +35,20 @@ export default function AttachmentsPage() {
       <AttachmentList
         attachments={attachments}
         backButton={
-          <div className="flex justify-center mb-8">
+          <div className="flex justify-center gap-4 mb-8">
             <Button
               variant="outline"
               className="flex items-center gap-2"
               onClick={() => router.push('/dashboard')}
             >
               <ArrowLeft className="w-4 h-4" /> Terug naar dashboard
+            </Button>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2"
+              onClick={() => router.push(`/dashboard/machines/${machineId}/ventielen`)}
+            >
+              <Settings className="w-4 h-4" /> Ventielen Overzicht
             </Button>
           </div>
         }
