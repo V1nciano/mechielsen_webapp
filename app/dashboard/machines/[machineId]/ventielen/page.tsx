@@ -82,22 +82,18 @@ function VentielenViewPageContent() {
 
       setMachine(machineData);
 
-      // Fetch ventielen for this machine
-      const { data: ventielenData, error: ventielenError } = await supabase
-        .from('machine_ventielen')
-        .select('*')
-        .eq('machine_id', machineId)
-        .eq('actief', true)
-        .order('volgorde', { ascending: true });
-
-      if (ventielenError) {
-        console.error('Error fetching ventielen:', ventielenError);
-        setVentielen([]);
-      } else {
-        const allVentielen = ventielenData || [];
+      // Fetch ventielen for this machine via API
+      const ventielenResponse = await fetch(`/api/machine-ventielen?machineId=${machineId}`);
+      if (ventielenResponse.ok) {
+        const ventielenData = await ventielenResponse.json();
+        // Filter for active ventielen only
+        const allVentielen = (ventielenData || []).filter((v: any) => v.actief);
         setVentielen(allVentielen);
-        setVentielenVoor(allVentielen.filter(v => v.positie === 'voor'));
-        setVentielenAchter(allVentielen.filter(v => v.positie === 'achter'));
+        setVentielenVoor(allVentielen.filter((v: any) => v.positie === 'voor'));
+        setVentielenAchter(allVentielen.filter((v: any) => v.positie === 'achter'));
+      } else {
+        console.error('Error fetching ventielen:', await ventielenResponse.text());
+        setVentielen([]);
       }
 
     } catch (error) {
@@ -154,7 +150,7 @@ function VentielenViewPageContent() {
         <div className="mb-8 flex items-center gap-4">
           <Button
             variant="outline"
-            onClick={() => router.push(`/dashboard/machines/${machineId}/attachments`)}
+            onClick={() => router.back()}
             className="flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />

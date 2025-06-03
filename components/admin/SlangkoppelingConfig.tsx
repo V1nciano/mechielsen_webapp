@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Edit, Save, X, Plus, Trash2, Cable } from 'lucide-react';
+import { ArrowLeft, Edit, Save, X, Plus, Trash2, Cable, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,13 +39,16 @@ interface SlangKoppeling {
   machine_id: string;
   attachment_id?: string;
   slang_nummer: number;
-  slang_kleur?: string;
-  slang_label?: string;
-  ventiel_id?: string;
-  poort?: 'A' | 'B' | 'P' | 'T';
-  functie_beschrijving?: string;
-  instructie_tekst?: string;
+  slang_kleur: string;
+  slang_label: string;
+  ventiel_id: string;
+  poort: 'A' | 'B' | 'P' | 'T';
+  functie_beschrijving: string;
+  instructie_tekst: string;
   volgorde: number;
+  connection_type: 'single_acting' | 'double_acting' | 'high_flow' | 'low_flow';
+  pressure_rating: number;
+  flow_rating: number;
 }
 
 const SLANG_KLEUREN = [
@@ -77,10 +80,14 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
     slang_nummer: 1,
     slang_kleur: 'rood',
     slang_label: '',
+    ventiel_id: '',
     poort: 'A',
     functie_beschrijving: '',
     instructie_tekst: '',
-    volgorde: 1
+    volgorde: 1,
+    connection_type: 'single_acting',
+    pressure_rating: 250,
+    flow_rating: 40
   });
   
   const router = useRouter();
@@ -96,6 +103,13 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
       fetchSlangkoppelingen();
     }
   }, [selectedAttachment]);
+
+  useEffect(() => {
+    if (selectedAttachment) {
+      const maxVolgorde = Math.max(0, ...slangkoppelingen.map(k => k.volgorde || 0));
+      setNewKoppeling(k => ({ ...k, volgorde: maxVolgorde + 1 }));
+    }
+  }, [addDialogOpen, selectedAttachment, slangkoppelingen]);
 
   const checkAdminAndFetchData = async () => {
     try {
@@ -164,17 +178,13 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
         setAttachments(attachmentsData || []);
       }
 
-      // Fetch ventielen for this machine
-      const { data: ventielenData, error: ventielenError } = await supabase
-        .from('machine_ventielen')
-        .select('id, ventiel_nummer, functie_naam, kleur_code, poort_a_label, poort_b_label')
-        .eq('machine_id', machineId)
-        .order('volgorde', { ascending: true });
-
-      if (ventielenError) {
-        console.error('Error fetching ventielen:', ventielenError);
-      } else {
+      // Fetch ventielen for this machine via API
+      const ventielenResponse = await fetch(`/api/machine-ventielen?machineId=${machineId}`);
+      if (ventielenResponse.ok) {
+        const ventielenData = await ventielenResponse.json();
         setVentielen(ventielenData || []);
+      } else {
+        console.error('Error fetching ventielen:', await ventielenResponse.text());
       }
 
     } catch (error) {
@@ -187,17 +197,16 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
 
   const fetchSlangkoppelingen = async () => {
     try {
-      const { data, error } = await supabase
-        .from('slang_koppelingen')
-        .select('*')
-        .eq('machine_id', machineId)
-        .eq('attachment_id', selectedAttachment || '')
-        .order('volgorde', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching slangkoppelingen:', error);
+      const response = await fetch(`/api/slang-koppelingen?machineId=${machineId}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Filter by attachment if selected (API returns all connections for machine)
+        const filteredData = selectedAttachment 
+          ? data.filter((item: any) => item.attachment_id === selectedAttachment)
+          : data;
+        setSlangkoppelingen(filteredData || []);
       } else {
-        setSlangkoppelingen(data || []);
+        console.error('Error fetching slangkoppelingen:', await response.text());
       }
     } catch (error) {
       console.error('Error:', error);
@@ -218,13 +227,18 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
     if (!editingKoppeling) return;
 
     try {
-      const { error } = await supabase
-        .from('slang_koppelingen')
-        .update(editForm)
-        .eq('id', editingKoppeling);
+      const response = await fetch('/api/slang-koppelingen', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: editingKoppeling, ...editForm }),
+      });
 
-      if (error) {
-        toast.error('Fout bij opslaan: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij opslaan: ' + (data.error || 'Unknown error'));
         return;
       }
 
@@ -246,12 +260,18 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
         attachment_id: selectedAttachment || null
       };
 
-      const { error } = await supabase
-        .from('slang_koppelingen')
-        .insert([koppelingData]);
+      const response = await fetch('/api/slang-koppelingen', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(koppelingData),
+      });
 
-      if (error) {
-        toast.error('Fout bij toevoegen slangkoppeling: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij toevoegen slangkoppeling: ' + (data.error || 'Unknown error'));
         return;
       }
 
@@ -261,10 +281,14 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
         slang_nummer: 1,
         slang_kleur: 'rood',
         slang_label: '',
+        ventiel_id: '',
         poort: 'A',
         functie_beschrijving: '',
         instructie_tekst: '',
-        volgorde: 1
+        volgorde: 1,
+        connection_type: 'single_acting',
+        pressure_rating: 250,
+        flow_rating: 40
       });
       fetchSlangkoppelingen();
     } catch (error) {
@@ -279,13 +303,14 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
     }
 
     try {
-      const { error } = await supabase
-        .from('slang_koppelingen')
-        .delete()
-        .eq('id', koppelingId);
+      const response = await fetch(`/api/slang-koppelingen?id=${koppelingId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) {
-        toast.error('Fout bij verwijderen: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij verwijderen: ' + (data.error || 'Unknown error'));
         return;
       }
 
@@ -412,14 +437,13 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
                   <div>
                     <Label htmlFor="ventiel_id">Ventiel</Label>
                     <Select 
-                      value={newKoppeling.ventiel_id || 'none'} 
-                      onValueChange={(value) => setNewKoppeling({...newKoppeling, ventiel_id: value === 'none' ? '' : value})}
+                      value={newKoppeling.ventiel_id || ''} 
+                      onValueChange={(value) => setNewKoppeling({...newKoppeling, ventiel_id: value})}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecteer ventiel..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Geen ventiel</SelectItem>
                         {ventielen.map((ventiel) => (
                           <SelectItem key={ventiel.id} value={ventiel.id}>
                             {ventiel.ventiel_nummer} - {ventiel.functie_naam}
@@ -446,6 +470,46 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
                     </Select>
                   </div>
                   <div>
+                    <Label htmlFor="connection_type">Verbindingssoort</Label>
+                    <Select 
+                      value={newKoppeling.connection_type || 'single_acting'} 
+                      onValueChange={(value: 'single_acting' | 'double_acting' | 'high_flow' | 'low_flow') => 
+                        setNewKoppeling({...newKoppeling, connection_type: value})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single_acting">Enkelwerkend</SelectItem>
+                        <SelectItem value="double_acting">Dubbelwerkend</SelectItem>
+                        <SelectItem value="high_flow">Hoge Doorstroming</SelectItem>
+                        <SelectItem value="low_flow">Lage Doorstroming</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="pressure_rating">Druk Rating (bar)</Label>
+                    <Input
+                      id="pressure_rating"
+                      type="number"
+                      min="0"
+                      max="350"
+                      value={newKoppeling.pressure_rating || 250}
+                      onChange={(e) => setNewKoppeling({...newKoppeling, pressure_rating: parseInt(e.target.value)})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="flow_rating">Debiet Rating (l/min)</Label>
+                    <Input
+                      id="flow_rating"
+                      type="number"
+                      min="0"
+                      max="200"
+                      value={newKoppeling.flow_rating || 40}
+                      onChange={(e) => setNewKoppeling({...newKoppeling, flow_rating: parseInt(e.target.value)})}
+                    />
+                  </div>
+                  <div>
                     <Label htmlFor="functie_beschrijving">Functie</Label>
                     <Input
                       id="functie_beschrijving"
@@ -464,7 +528,7 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 mt-6">
+                <div className="flex justify-end gap-2 mt-4">
                   <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                     Annuleren
                   </Button>
@@ -516,63 +580,73 @@ export default function SlangkoppelingConfig({ machineId }: SlangkoppelingConfig
             {slangkoppelingen.map((koppeling) => {
               const ventielInfo = getVentielInfo(koppeling.ventiel_id);
               return (
-                <Card key={koppeling.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">Slang {koppeling.slang_nummer}</Badge>
-                        {getKleurBadge(koppeling.slang_kleur)}
-                      </div>
-                      <div className="flex gap-2">
-                        {editingKoppeling === koppeling.id ? (
-                          <>
-                            <Button size="sm" onClick={saveKoppeling}>
-                              <Save className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={cancelEditing}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button size="sm" variant="outline" onClick={() => startEditing(koppeling)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="destructive" 
-                              onClick={() => deleteKoppeling(koppeling.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </CardTitle>
+                <Card key={koppeling.id} className="mb-4">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-full ${SLANG_KLEUREN.find(k => k.value === koppeling.slang_kleur)?.color}`}></div>
+                      <CardTitle className="text-lg">
+                        {koppeling.slang_label}
+                      </CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">
+                        {koppeling.connection_type === 'single_acting' ? 'Enkelwerkend' :
+                         koppeling.connection_type === 'double_acting' ? 'Dubbelwerkend' :
+                         koppeling.connection_type === 'high_flow' ? 'Hoge Doorstroming' :
+                         'Lage Doorstroming'}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => startEditing(koppeling)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteKoppeling(koppeling.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div>
-                      <Label>Slang Label</Label>
-                      <p className="text-sm font-medium">{koppeling.slang_label || 'Geen label'}</p>
-                    </div>
-
-                    {ventielInfo && (
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Ventiel Koppeling</Label>
-                        <div className="text-sm">
-                          <p className="font-medium">{ventielInfo.ventiel_nummer} - {ventielInfo.functie_naam}</p>
-                          <p className="text-gray-600">Poort: {koppeling.poort}</p>
+                        <Label>Slang Nummer</Label>
+                        <p className="text-sm font-medium">{koppeling.slang_nummer}</p>
+                      </div>
+                      <div>
+                        <Label>Slang Kleur</Label>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full ${SLANG_KLEUREN.find(k => k.value === koppeling.slang_kleur)?.color}`}></div>
+                          <p className="text-sm font-medium capitalize">{koppeling.slang_kleur}</p>
                         </div>
                       </div>
-                    )}
-
-                    {koppeling.functie_beschrijving && (
                       <div>
-                        <Label>Functie</Label>
-                        <p className="text-sm text-gray-600">{koppeling.functie_beschrijving}</p>
+                        <Label>Ventiel</Label>
+                        <p className="text-sm font-medium">
+                          {ventielInfo ? `${ventielInfo.ventiel_nummer} - ${ventielInfo.functie_naam}` : 'Geen ventiel'}
+                        </p>
                       </div>
-                    )}
-
+                      <div>
+                        <Label>Poort</Label>
+                        <p className="text-sm font-medium">{koppeling.poort}</p>
+                      </div>
+                      <div>
+                        <Label>Druk Rating</Label>
+                        <p className="text-sm font-medium">{koppeling.pressure_rating} bar</p>
+                      </div>
+                      <div>
+                        <Label>Debiet Rating</Label>
+                        <p className="text-sm font-medium">{koppeling.flow_rating} l/min</p>
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Functie</Label>
+                      <p className="text-sm text-gray-600">{koppeling.functie_beschrijving}</p>
+                    </div>
                     {koppeling.instructie_tekst && (
                       <div>
                         <Label>Instructie</Label>

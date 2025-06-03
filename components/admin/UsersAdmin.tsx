@@ -31,89 +31,84 @@ export default function UsersAdmin() {
 
   const checkAdminAndFetchUsers = async () => {
     try {
-      console.log('🔍 Admin users: Starting auth check...');
-      
       // Check for URL verification parameters first
       const verified = searchParams.get('verified');
       const emailParam = searchParams.get('email');
       
-      console.log('🔍 Admin users: URL params:', { verified, emailParam });
-      
       if (verified === 'true' && emailParam) {
-        console.log('🎉 Admin users: URL verification found! Proceeding...');
-        // Continue to fetch users
+        // URL verification found, proceed
       } else {
         // Fall back to session check
-        console.log('🔍 Admin users: No URL verification, checking session...');
+        // Try to get session multiple times if needed
+        let session = null;
+        let authError = null;
         
-        // Check admin authentication
-        const { data: { session }, error: authError } = await supabase.auth.getSession();
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionData?.session) {
+            session = sessionData.session;
+            authError = null;
+            break;
+          }
+          
+          if (sessionError) {
+            authError = sessionError;
+          }
+          
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
         
         if (authError || !session) {
+          // Clear any bad session data
+          await supabase.auth.signOut();
           router.push('/login');
           return;
         }
         
-        console.log('Admin users: Checking admin for:', session.user.email);
-        
         // EMAIL-BASED ADMIN CHECK FIRST (same as dashboard)
         let isAdmin = false;
         if (session.user.email?.includes('admin')) {
-          console.log('🎉 Admin users: Email contains admin - granting access!');
           isAdmin = true;
         } else {
-          // Fallback: Check database for admin role
-          const { data: profile, error: profileError } = await supabase
-            .from('user_profiles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single();
-          
-          if (profile && profile.role === 'admin') {
-            console.log('🎉 Admin users: Database admin found!');
-            isAdmin = true;
-          }
-          
-          if (profileError) {
-            console.log('Admin users: Profile query error:', profileError);
-          }
+          // For non-email admin check, let the API handle it to avoid RLS issues
+          isAdmin = true; // Let API handle the actual admin check
         }
         
         if (!isAdmin) {
-          console.log('❌ Admin users: User is not admin, redirecting to dashboard');
           router.push('/dashboard');
           return;
         }
       }
 
-      // Fetch all user profiles with auth users data
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Fetch users via API route to avoid RLS infinite recursion
+      const response = await fetch(`/api/users?verified=${verified}&email=${encodeURIComponent(emailParam || '')}`, {
+        credentials: 'include', // Important: This ensures cookies are sent with the request
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      const data = await response.json();
 
-      if (profilesError) {
-        toast.error('Fout bij ophalen gebruikers: ' + profilesError.message);
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+        if (response.status === 403) {
+          router.push('/dashboard');
+          return;
+        }
+        toast.error('Fout bij ophalen gebruikers: ' + (data.error || 'Unknown error'));
         return;
       }
 
-      // Fetch auth.users data to get emails
-      const { data: authUsers, error: authError2 } = await supabase.auth.admin.listUsers();
-      
-      if (authError2) {
-        console.error('Could not fetch auth users:', authError2);
-        // Continue without emails if admin API is not available
-      }
-
-      // Combine profile data with email from auth.users
-      const usersWithEmails = profiles?.map(profile => ({
-        ...profile,
-        email: authUsers?.users?.find(u => u.id === profile.user_id)?.email || 'Unknown'
-      })) || [];
-
-      setUsers(usersWithEmails);
+      setUsers(data);
     } catch (error) {
-      console.error('Error:', error);
       toast.error('Er is een fout opgetreden');
     } finally {
       setLoading(false);
@@ -122,20 +117,27 @@ export default function UsersAdmin() {
 
   const updateUserRole = async (userId: string, newRole: 'user' | 'admin') => {
     try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({ role: newRole })
-        .eq('user_id', userId);
+      const response = await fetch('/api/users', {
+        method: 'PATCH',
+        credentials: 'include', // Important: This ensures cookies are sent with the request
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({ userId, role: newRole }),
+      });
 
-      if (error) {
-        toast.error('Fout bij bijwerken rol: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij bijwerken rol: ' + (data.error || 'Unknown error'));
         return;
       }
 
       toast.success(`Gebruikersrol succesvol bijgewerkt naar ${newRole}`);
       checkAdminAndFetchUsers(); // Refresh data
     } catch (error) {
-      console.error('Error updating user role:', error);
       toast.error('Er is een fout opgetreden bij het bijwerken van de rol');
     }
   };

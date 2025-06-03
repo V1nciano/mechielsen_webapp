@@ -11,14 +11,21 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  
+  // Query attachments through the junction table attachment_machines
   const { data, error } = await supabase
-    .from('attachments')
-    .select('*')
+    .from('attachment_machines')
+    .select(`
+      attachments!inner(*)
+    `)
     .eq('machine_id', machineId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  // Extract the attachments from the junction table result
+  const attachments = data?.map(item => item.attachments) || [];
+  
+  return NextResponse.json(attachments);
 }

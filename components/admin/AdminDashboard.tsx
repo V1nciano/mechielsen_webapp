@@ -187,27 +187,7 @@ export default function AdminDashboard() {
         <div className="mt-8">
           <Button 
             variant="outline" 
-            onClick={async () => {
-              try {
-                console.log('🔍 Admin: Preparing to go back to dashboard...');
-                
-                // First, try to refresh the session
-                const { data: { session } } = await supabase.auth.getSession();
-                
-                if (session) {
-                  console.log('✅ Admin: Session is valid, navigating to dashboard');
-                  // Session is valid, navigate normally
-                  router.push('/dashboard');
-                } else {
-                  console.log('❌ Admin: No session, navigating to login instead');
-                  // No session, redirect to login
-                  router.push('/login');
-                }
-              } catch (error) {
-                console.error('❌ Admin: Error checking session:', error);
-                router.push('/login');
-              }
-            }}
+            onClick={() => router.push('/dashboard')}
           >
             Terug naar Dashboard
           </Button>

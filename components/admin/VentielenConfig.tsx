@@ -81,6 +81,13 @@ export default function VentielenConfig({ machineId }: VentielenConfigProps) {
     checkAdminAndFetchData();
   }, [machineId]);
 
+  useEffect(() => {
+    if (addDialogOpen) {
+      const maxVolgorde = Math.max(0, ...ventielen.map(v => v.volgorde || 0));
+      setNewVentiel(v => ({ ...v, volgorde: maxVolgorde + 1 }));
+    }
+  }, [addDialogOpen, ventielen]);
+
   const checkAdminAndFetchData = async () => {
     try {
       console.log('🔍 Admin ventielen: Starting auth check...');
@@ -136,18 +143,14 @@ export default function VentielenConfig({ machineId }: VentielenConfigProps) {
 
       setMachine(machineData);
 
-      // Fetch ventielen for this machine
-      const { data: ventielenData, error: ventielenError } = await supabase
-        .from('machine_ventielen')
-        .select('*')
-        .eq('machine_id', machineId)
-        .order('volgorde', { ascending: true });
-
-      if (ventielenError) {
-        console.error('Error fetching ventielen:', ventielenError);
-        setVentielen([]);
-      } else {
+      // Fetch ventielen for this machine via API
+      const ventielenResponse = await fetch(`/api/machine-ventielen?machineId=${machineId}`);
+      if (ventielenResponse.ok) {
+        const ventielenData = await ventielenResponse.json();
         setVentielen(ventielenData || []);
+      } else {
+        console.error('Error fetching ventielen:', await ventielenResponse.text());
+        setVentielen([]);
       }
 
     } catch (error) {
@@ -172,13 +175,18 @@ export default function VentielenConfig({ machineId }: VentielenConfigProps) {
     if (!editingVentiel) return;
 
     try {
-      const { error } = await supabase
-        .from('machine_ventielen')
-        .update(editForm)
-        .eq('id', editingVentiel);
+      const response = await fetch('/api/machine-ventielen', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: editingVentiel, ...editForm }),
+      });
 
-      if (error) {
-        toast.error('Fout bij opslaan: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij opslaan: ' + (data.error || 'Unknown error'));
         return;
       }
 
@@ -199,12 +207,18 @@ export default function VentielenConfig({ machineId }: VentielenConfigProps) {
         machine_id: machineId
       };
 
-      const { error } = await supabase
-        .from('machine_ventielen')
-        .insert([ventielData]);
+      const response = await fetch('/api/machine-ventielen', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(ventielData),
+      });
 
-      if (error) {
-        toast.error('Fout bij toevoegen ventiel: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij toevoegen ventiel: ' + (data.error || 'Unknown error'));
         return;
       }
 
@@ -235,13 +249,14 @@ export default function VentielenConfig({ machineId }: VentielenConfigProps) {
     }
 
     try {
-      const { error } = await supabase
-        .from('machine_ventielen')
-        .delete()
-        .eq('id', ventielId);
+      const response = await fetch(`/api/machine-ventielen?id=${ventielId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) {
-        toast.error('Fout bij verwijderen: ' + error.message);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij verwijderen: ' + (data.error || 'Unknown error'));
         return;
       }
 
