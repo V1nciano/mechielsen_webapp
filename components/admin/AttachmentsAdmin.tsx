@@ -13,13 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
 import qrcode from 'qrcode-generator';
 
-interface AttachmentSlang {
+interface HydraulicHose {
   id: string;
-  attachment_id: string;
   kleur: string;
   volgorde: number;
 }
@@ -38,7 +36,7 @@ interface Attachment {
   afbeelding?: string;
   created_at: string;
   machines?: Machine[];
-  hydraulic_hoses?: AttachmentSlang[];
+  hydraulic_hoses?: HydraulicHose[];
   imageFile?: File;
 }
 
@@ -46,6 +44,11 @@ interface Machine {
   id: string;
   naam: string;
   type: string;
+  kenteken?: string;
+}
+
+interface SupabaseError {
+  message: string;
 }
 
 const SLANG_KLEUREN = [
@@ -59,36 +62,51 @@ const SLANG_KLEUREN = [
   { value: 'paars', label: 'Paars', color: 'bg-purple-500', textColor: 'text-white' }
 ];
 
-export default function AttachmentsAdmin() {
-  const [loading, setLoading] = useState(true);
+const AttachmentsAdmin: React.FC = () => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [editingAttachment, setEditingAttachment] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<Attachment>>({});
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingAttachment, setEditingAttachment] = useState<Attachment | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [newAttachment, setNewAttachment] = useState<Partial<Attachment>>({});
+  const [editForm, setEditForm] = useState<Partial<Attachment>>({});
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
   const [currentQrAttachment, setCurrentQrAttachment] = useState<Attachment | null>(null);
-  const [newAttachment, setNewAttachment] = useState<Partial<Attachment>>({
-    naam: '',
-    beschrijving: '',
-    type: '',
-    gewicht: 0,
-    werkdruk: 0,
-    max_druk: 0,
-    debiet: 0,
-    vermogen: 0,
-    aantal_slangen: 2
-  });
-  const [selectedMachines, setSelectedMachines] = useState<string[]>([]);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
+
+  const fetchAttachmentsAndMachines = useCallback(async () => {
+    try {
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('attachments')
+        .select(`
+          *,
+          hydraulic_hoses:attachment_hydraulic_hoses(
+            id,
+            kleur,
+            volgorde
+          )
+        `)
+        .order('created_at', { ascending: true });
+
+      if (attachmentsError) {
+        toast.error('Fout bij ophalen aanbouwdelen: ' + attachmentsError.message);
+        return;
+      }
+
+      setAttachments(attachmentsData || []);
+    } catch (err: unknown) {
+      const error = err as SupabaseError;
+      console.error('Error fetching attachments:', error);
+      toast.error('Er is een fout opgetreden bij het ophalen van de data');
+    }
+  }, [supabase]);
 
   const checkAdminAndFetchData = useCallback(async () => {
     try {
@@ -140,77 +158,6 @@ export default function AttachmentsAdmin() {
     checkAdminAndFetchData();
   }, [checkAdminAndFetchData]);
 
-  const fetchAttachmentsAndMachines = async () => {
-    try {
-      // Try to fetch attachments with hydraulic hoses relation
-      const { data: attachmentsData, error: attachmentsError } = await supabase
-        .from('attachments')
-        .select(`
-          *,
-          hydraulic_hoses:attachment_hydraulic_hoses(
-            id,
-            kleur,
-            volgorde
-          )
-        `)
-        .order('created_at', { ascending: true });
-
-      if (attachmentsError) {
-        toast.error('Fout bij ophalen aanbouwdelen: ' + attachmentsError.message);
-        
-        // Fallback: try simpler query without relations
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('attachments')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (fallbackError) {
-          toast.error('Database fout: ' + fallbackError.message);
-          return;
-        }
-
-        // Manually fetch hydraulic hoses for each attachment
-        const attachmentsWithHoses = await Promise.all(
-          (fallbackData || []).map(async (attachment) => {
-            const { data: hoses } = await supabase
-              .from('attachment_hydraulic_hoses')
-              .select('*')
-              .eq('attachment_id', attachment.id)
-              .order('volgorde', { ascending: true });
-
-            return {
-              ...attachment,
-              hydraulic_hoses: hoses || []
-            };
-          })
-        );
-
-        setAttachments(attachmentsWithHoses);
-      } else {
-        if (!attachmentsData || attachmentsData.length === 0) {
-          setAttachments([]);
-        } else {
-          setAttachments(attachmentsData);
-        }
-      }
-
-      // Fetch machines
-      const { data: machinesData, error: machinesError } = await supabase
-        .from('machines')
-        .select('id, naam, type')
-        .order('naam', { ascending: true });
-
-      if (machinesError) {
-        toast.error('Fout bij ophalen machines: ' + machinesError.message);
-        return;
-      }
-
-      setMachines(machinesData || []);
-    } catch {
-      toast.error('Er is een fout opgetreden');
-    }
-  };
-
   const getKleurDisplay = (kleur: string) => {
     const kleurInfo = SLANG_KLEUREN.find(k => k.value === kleur);
     if (!kleurInfo) return null;
@@ -230,7 +177,7 @@ export default function AttachmentsAdmin() {
   };
 
   const startEditing = (attachment: Attachment) => {
-    setEditingAttachment(attachment.id);
+    setEditingAttachment(attachment);
     setEditForm(attachment);
     setEditImagePreview(attachment.afbeelding || null);
     setEditDialogOpen(true);
@@ -251,7 +198,7 @@ export default function AttachmentsAdmin() {
       let imageUrl = editForm.afbeelding;
       if (editForm.imageFile) {
         toast.info('Uploading foto...');
-        const uploadedUrl = await uploadAttachmentImage(editForm.imageFile, editingAttachment);
+        const uploadedUrl = await uploadAttachmentImage(editForm.imageFile, editingAttachment.id);
         if (uploadedUrl) {
           imageUrl = uploadedUrl;
         }
@@ -273,7 +220,7 @@ export default function AttachmentsAdmin() {
       const { error } = await supabase
         .from('attachments')
         .update(attachmentData)
-        .eq('id', editingAttachment);
+        .eq('id', editingAttachment.id);
 
       if (error) {
         toast.error('Fout bij opslaan: ' + error.message);
@@ -366,22 +313,6 @@ export default function AttachmentsAdmin() {
         }
       }
 
-      // Create machine connections if any were selected
-      if (selectedMachines.length > 0) {
-        const connections = selectedMachines.map(machineId => ({
-          machine_id: machineId,
-          attachment_id: attachmentData.id
-        }));
-
-        const { error: connectionsError } = await supabase
-          .from('attachment_machines')
-          .insert(connections);
-
-        if (connectionsError) {
-          toast.error('Aanbouwdeel toegevoegd, maar fout bij koppelen machines: ' + connectionsError.message);
-        }
-      }
-
       toast.success('Aanbouwdeel succesvol toegevoegd!');
       setAddDialogOpen(false);
       setNewAttachment({
@@ -395,11 +326,12 @@ export default function AttachmentsAdmin() {
         vermogen: 0,
         aantal_slangen: 2
       });
-      setSelectedMachines([]);
       setImagePreview(null);
       fetchAttachmentsAndMachines();
-    } catch {
-      toast.error('Er is een fout opgetreden bij het toevoegen');
+    } catch (err: unknown) {
+      const error = err as SupabaseError;
+      console.error('Error adding attachment:', error);
+      toast.error('Fout bij toevoegen: ' + error.message);
     }
   };
 
@@ -428,14 +360,6 @@ export default function AttachmentsAdmin() {
       fetchAttachmentsAndMachines();
     } catch {
       toast.error('Er is een fout opgetreden bij het verwijderen');
-    }
-  };
-
-  const handleMachineSelection = (machineId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedMachines([...selectedMachines, machineId]);
-    } else {
-      setSelectedMachines(selectedMachines.filter(id => id !== machineId));
     }
   };
 
@@ -532,22 +456,20 @@ export default function AttachmentsAdmin() {
     }
   };
 
-  const updateHoseColor = async (hoseId: string, newColor: string) => {
+  const updateHoseColor = async (hoseId: string, color: string) => {
     try {
       const { error } = await supabase
         .from('attachment_hydraulic_hoses')
-        .update({ kleur: newColor })
+        .update({ kleur: color })
         .eq('id', hoseId);
 
-      if (error) {
-        toast.error('Fout bij wijzigen kleur: ' + error.message);
-        return;
-      }
-
-      toast.success('Kleur succesvol gewijzigd!');
-      fetchAttachmentsAndMachines();
-    } catch {
-      toast.error('Er is een fout opgetreden bij het wijzigen');
+      if (error) throw error;
+      await fetchAttachmentsAndMachines();
+      toast.success('Kleur bijgewerkt');
+    } catch (err: unknown) {
+      const error = err as SupabaseError;
+      console.error('Error updating hose color:', error);
+      toast.error('Fout bij bijwerken van kleur');
     }
   };
 
@@ -674,10 +596,10 @@ export default function AttachmentsAdmin() {
   }
 
   return (
-    <div className="min-h-screen p-8 bg-gray-50">
+    <div className="min-h-screen p-4 sm:p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <Button
               variant="outline"
               onClick={() => {
@@ -685,236 +607,211 @@ export default function AttachmentsAdmin() {
                 const email = searchParams.get('email') || 'admin@example.com';
                 router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
               }}
-              className="flex items-center gap-2"
+              className="w-fit"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Terug
             </Button>
-            <h1 className="text-3xl font-bold text-gray-900">Aanbouwdelen Beheren</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Aanbouwdelen Beheren</h1>
           </div>
           
-          <div className="flex items-center gap-4">
-            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Nieuw Aanbouwdeel
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Nieuw Aanbouwdeel Toevoegen</DialogTitle>
-                </DialogHeader>
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <Label htmlFor="naam">Naam</Label>
-                    <Input
-                      id="naam"
-                      value={newAttachment.naam || ''}
-                      onChange={(e) => setNewAttachment({...newAttachment, naam: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="type">Type</Label>
-                    <Input
-                      id="type"
-                      value={newAttachment.type || ''}
-                      onChange={(e) => setNewAttachment({...newAttachment, type: e.target.value})}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label htmlFor="beschrijving">Beschrijving</Label>
-                    <Textarea
-                      id="beschrijving"
-                      value={newAttachment.beschrijving || ''}
-                      onChange={(e) => setNewAttachment({...newAttachment, beschrijving: e.target.value})}
-                    />
-                  </div>
-                  
-                  {/* Machine Selection */}
-                  <div className="col-span-2">
-                    <Label>Gekoppelde Machines</Label>
-                    <div className="grid grid-cols-2 gap-2 mt-2 p-4 border rounded-lg bg-gray-50">
-                      {machines.map((machine) => (
-                        <div key={machine.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`machine-${machine.id}`}
-                            checked={selectedMachines.includes(machine.id)}
-                            onCheckedChange={(checked) => handleMachineSelection(machine.id, checked as boolean)}
-                          />
-                          <Label htmlFor={`machine-${machine.id}`} className="text-sm">
-                            {machine.naam} ({machine.type})
-                          </Label>
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                Nieuw Aanbouwdeel
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+              <DialogHeader className="space-y-2">
+                <DialogTitle className="text-lg sm:text-xl">Nieuw Aanbouwdeel Toevoegen</DialogTitle>
+                <p className="text-sm text-gray-600">Vul de onderstaande gegevens in om een nieuw aanbouwdeel toe te voegen.</p>
+              </DialogHeader>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                  <Label htmlFor="naam" className="text-sm sm:text-base">Naam</Label>
+                  <Input
+                    id="naam"
+                    value={newAttachment.naam || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, naam: e.target.value})}
+                    className="w-full text-base"
+                    placeholder="Voer de naam in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="type" className="text-sm sm:text-base">Type</Label>
+                  <Input
+                    id="type"
+                    value={newAttachment.type || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, type: e.target.value})}
+                    className="w-full text-base"
+                    placeholder="Voer het type in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="aantal_slangen" className="text-sm sm:text-base">Aantal Slangen</Label>
+                  <Input
+                    id="aantal_slangen"
+                    type="number"
+                    value={newAttachment.aantal_slangen || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, aantal_slangen: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer het aantal slangen in"
+                  />
+                </div>
+
+                <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                  <Label htmlFor="beschrijving" className="text-sm sm:text-base">Beschrijving</Label>
+                  <Textarea
+                    id="beschrijving"
+                    value={newAttachment.beschrijving || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, beschrijving: e.target.value})}
+                    className="w-full min-h-[100px] text-base"
+                    placeholder="Voer een beschrijving in"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="gewicht" className="text-sm sm:text-base">Gewicht (kg)</Label>
+                  <Input
+                    id="gewicht"
+                    type="number"
+                    value={newAttachment.gewicht || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, gewicht: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer het gewicht in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="werkdruk" className="text-sm sm:text-base">Werkdruk (bar)</Label>
+                  <Input
+                    id="werkdruk"
+                    type="number"
+                    value={newAttachment.werkdruk || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, werkdruk: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer de werkdruk in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="max_druk" className="text-sm sm:text-base">Max Druk (bar)</Label>
+                  <Input
+                    id="max_druk"
+                    type="number"
+                    value={newAttachment.max_druk || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, max_druk: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer de maximale druk in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="debiet" className="text-sm sm:text-base">Debiet (l/min)</Label>
+                  <Input
+                    id="debiet"
+                    type="number"
+                    value={newAttachment.debiet || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, debiet: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer het debiet in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vermogen" className="text-sm sm:text-base">Vermogen (kW)</Label>
+                  <Input
+                    id="vermogen"
+                    type="number"
+                    value={newAttachment.vermogen || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, vermogen: parseInt(e.target.value) || 0})}
+                    className="w-full text-base"
+                    min="0"
+                    placeholder="Voer het vermogen in"
+                  />
+                </div>
+
+                {/* Image Upload Section */}
+                <div className="col-span-1 sm:col-span-2 space-y-3">
+                  <Label className="text-sm sm:text-base">Foto van het Aanbouwdeel</Label>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <label htmlFor="attachment-image" className="flex-1">
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors min-h-[120px] flex items-center justify-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Upload className="w-8 h-8 text-gray-400" />
+                            <span className="text-sm text-gray-600">
+                              Tik om een foto te selecteren
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              JPG, PNG (max 5MB)
+                            </span>
+                          </div>
                         </div>
-                      ))}
+                        <input
+                          id="attachment-image"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageSelect}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
                     
-                    {/* Visual Preview of Selected Machines */}
-                    {selectedMachines.length > 0 && (
-                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm font-medium text-blue-800 mb-2">
-                          ✅ Geselecteerde Machines ({selectedMachines.length}):
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedMachines.map((machineId) => {
-                            const machine = machines.find(m => m.id === machineId);
-                            if (!machine) return null;
-                            
-                            return (
-                              <div key={machineId} className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border">
-                                <span className="text-sm font-medium">{machine.naam}</span>
-                                <div className="flex gap-1">
-                                  {Array.from({ length: 2 }, (_, index) => {
-                                    const kleur = index === 0 ? 'rood' : 'blauw';
-                                    const kleurInfo = SLANG_KLEUREN.find(k => k.value === kleur);
-                                    
-                                    return (
-                                      <div key={index} className={`w-4 h-4 rounded-full ${kleurInfo?.color} border`} 
-                                           title={`Input ${index + 1} - ${kleur}`}>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <p className="text-xs text-blue-600 mt-2">
-                          💡 Configureer straks slangen met matchende kleuren voor deze inputs
-                        </p>
+                    {imagePreview && (
+                      <div className="relative">
+                        <Image
+                          src={imagePreview}
+                          alt="Preview"
+                          width={400}
+                          height={192}
+                          className="w-full h-48 object-cover rounded-lg border"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="absolute top-2 right-2 h-8 w-8 p-0"
+                          onClick={() => {
+                            setImagePreview(null);
+                            setNewAttachment({...newAttachment, imageFile: undefined});
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
                       </div>
                     )}
                   </div>
-
-                  {/* Technical specs */}
-                  <div>
-                    <Label htmlFor="gewicht">Gewicht (kg)</Label>
-                    <Input
-                      id="gewicht"
-                      inputMode="numeric"
-                      value={newAttachment.gewicht || 0}
-                      onChange={(e) => setNewAttachment({...newAttachment, gewicht: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="werkdruk">Werkdruk (bar)</Label>
-                    <Input
-                      id="werkdruk"
-                      inputMode="numeric"
-                      value={newAttachment.werkdruk || 0}
-                      onChange={(e) => setNewAttachment({...newAttachment, werkdruk: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max_druk">Max Druk (bar)</Label>
-                    <Input
-                      id="max_druk"
-                      inputMode="numeric"
-                      value={newAttachment.max_druk || 0}
-                      onChange={(e) => setNewAttachment({...newAttachment, max_druk: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="debiet">Debiet (l/min)</Label>
-                    <Input
-                      id="debiet"
-                      inputMode="numeric"
-                      value={newAttachment.debiet || 0}
-                      onChange={(e) => setNewAttachment({...newAttachment, debiet: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="vermogen">Vermogen (W)</Label>
-                    <Input
-                      id="vermogen"
-                      inputMode="numeric"
-                      value={newAttachment.vermogen || 0}
-                      onChange={(e) => setNewAttachment({...newAttachment, vermogen: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="aantal_slangen">Aantal Slangen</Label>
-                    <Input
-                      id="aantal_slangen"
-                      inputMode="numeric"
-                      value={newAttachment.aantal_slangen || 2}
-                      onChange={(e) => setNewAttachment({...newAttachment, aantal_slangen: parseInt(e.target.value) || 2})}
-                    />
-                  </div>
-
-                  {/* Image Upload Section */}
-                  <div className="col-span-2">
-                    <Label>Foto van het Aanbouwdeel</Label>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <label htmlFor="attachment-image" className="flex-1">
-                          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors">
-                            <div className="flex flex-col items-center gap-2">
-                              <Upload className="w-8 h-8 text-gray-400" />
-                              <span className="text-sm text-gray-600">
-                                Klik om een foto te selecteren
-                              </span>
-                              <span className="text-xs text-gray-400">
-                                JPG, PNG (max 5MB)
-                              </span>
-                            </div>
-                          </div>
-                          <input
-                            id="attachment-image"
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageSelect}
-                            className="hidden"
-                          />
-                        </label>
-                      </div>
-                      
-                      {imagePreview && (
-                        <div className="relative">
-                          <Image
-                            src={imagePreview}
-                            alt="Preview"
-                            width={400}
-                            height={192}
-                            className="w-full h-48 object-cover rounded-lg border"
-                          />
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            className="absolute top-2 right-2"
-                            onClick={() => {
-                              setImagePreview(null);
-                              setNewAttachment({...newAttachment, imageFile: undefined});
-                            }}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
-                <div className="flex justify-end gap-2 mt-6">
-                  <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                    Annuleren
-                  </Button>
-                  <Button onClick={addNewAttachment}>
-                    Aanbouwdeel Toevoegen
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+              </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setAddDialogOpen(false)} 
+                  className="w-full sm:w-auto h-11 text-base"
+                >
+                  Annuleren
+                </Button>
+                <Button 
+                  onClick={addNewAttachment} 
+                  className="w-full sm:w-auto h-11 text-base"
+                >
+                  Aanbouwdeel Toevoegen
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {attachments.map((attachment) => (
             <Card key={attachment.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="truncate">{attachment.naam}</span>
-                  <div className="flex gap-2">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="truncate font-semibold">{attachment.naam}</span>
+                  <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => startEditing(attachment)}>
                       <Edit className="w-4 h-4" />
                     </Button>
@@ -938,71 +835,55 @@ export default function AttachmentsAdmin() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {attachment.afbeelding && (
-                  <div className="relative">
+                  <div className="relative aspect-video">
                     <Image
                       src={attachment.afbeelding}
                       alt={attachment.naam}
-                      width={400}
-                      height={128}
-                      className="w-full h-32 object-cover rounded-lg"
+                      fill
+                      className="object-cover rounded-lg"
                     />
                   </div>
                 )}
                 
                 <div>
-                  <Label>Type</Label>
-                  <p className="text-sm text-gray-600">{attachment.type}</p>
-                </div>
-
-                {/* Gekoppelde Machines */}
-                <div>
-                  <Label>Gekoppelde Machines</Label>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {attachment.machines && attachment.machines.length > 0 ? (
-                      attachment.machines.map((machine) => (
-                        <Badge key={machine.id} variant="secondary" className="text-xs">
-                          {machine.naam}
-                        </Badge>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">Geen machines gekoppeld</p>
-                    )}
+                  <Label className="text-sm font-medium">Type</Label>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <Badge variant="secondary">{attachment.type}</Badge>
                   </div>
                 </div>
 
-                {/* Slangen Configuratie */}
+                {/* Hydraulic Hoses */}
                 <div>
-                  <div className="flex items-center justify-between">
-                    <Label>Slangen ({attachment.aantal_slangen || 2})</Label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-medium">
+                      Hydraulische Slangen ({attachment.aantal_slangen || 0})
+                    </Label>
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button size="sm" variant="outline">
-                          <Edit className="w-4 h-4 mr-1" />
-                          Kleuren
+                        <Button size="sm" variant="outline" className="text-xs">
+                          <Plus className="w-3 h-3 mr-1" />
+                          Configureren
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
+                      <DialogContent className="w-[95vw] sm:max-w-2xl">
                         <DialogHeader>
-                          <DialogTitle>Slang Kleuren voor {attachment.naam}</DialogTitle>
-                          <p className="text-sm text-gray-600">Wijzig de kleuren van elke slang</p>
+                          <DialogTitle>Hydraulische Slangen voor {attachment.naam}</DialogTitle>
+                          <p className="text-sm text-gray-600">Configureer de kleuren voor elke slang</p>
                         </DialogHeader>
                         
-                        {/* Color Configuration */}
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           {attachment.hydraulic_hoses?.map((hose) => (
-                            <div key={hose.id} className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
-                              <div className="flex items-center gap-4">
+                            <div key={hose.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg border gap-3">
+                              <div className="flex items-center gap-3">
                                 {getKleurDisplay(hose.kleur)}
-                                <div>
-                                  <p className="font-medium">Slang {hose.volgorde}</p>
-                                </div>
+                                <p className="font-medium">Slang {hose.volgorde}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Select 
                                   value={hose.kleur} 
                                   onValueChange={(value) => updateHoseColor(hose.id, value)}
                                 >
-                                  <SelectTrigger className="w-40">
+                                  <SelectTrigger className="w-full sm:w-40">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1020,81 +901,50 @@ export default function AttachmentsAdmin() {
                             </div>
                           ))}
                         </div>
-                        
-                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <p className="text-sm text-blue-800 font-medium">💡 Kleuren wijzigen:</p>
-                          <p className="text-xs text-blue-600 mt-1">
-                            Selecteer voor elke slang de gewenste kleur. Dit helpt bij het herkennen tijdens installatie.
-                          </p>
-                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
                   
-                  {/* Visual display of slangen */}
-                  <div className="mt-2">
-                    {attachment.hydraulic_hoses && attachment.hydraulic_hoses.length > 0 ? (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          {attachment.hydraulic_hoses.map((slang) => (
-                            <div key={slang.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
-                              {getKleurDisplay(slang.kleur)}
-                              <div className="flex-1">
-                                <span className="text-sm font-semibold">Slang #{slang.volgorde}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        
-                        {/* Quick visual overview */}
-                        <div className="flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
-                          <span className="text-xs font-medium text-gray-700">Quick view:</span>
-                          <div className="flex gap-1">
-                            {attachment.hydraulic_hoses.map((slang) => {
-                              const kleurInfo = SLANG_KLEUREN.find(k => k.value === slang.kleur);
-                              return (
-                                <div key={slang.id} 
-                                     className={`w-6 h-6 rounded-full ${kleurInfo?.color} flex items-center justify-center border-2 border-white shadow-sm`}
-                                     title={`Slang ${slang.volgorde} - ${slang.kleur}`}>
-                                  <span className={`text-xs font-bold ${kleurInfo?.textColor}`}>
-                                    {slang.volgorde}
-                                  </span>
-                                </div>
-                              );
-                            })}
+                  {attachment.hydraulic_hoses && attachment.hydraulic_hoses.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {attachment.hydraulic_hoses.map((hose) => (
+                          <div key={hose.id} 
+                               className="flex items-center gap-2 p-2 bg-white rounded-lg border shadow-sm">
+                            {getKleurDisplay(hose.kleur)}
+                            <span className="text-sm font-medium">
+                              Slang {hose.volgorde}
+                            </span>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ) : (
-                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">⚠️ Geen slangen geconfigureerd</p>
-                        <p className="text-xs text-yellow-600">Slangen worden automatisch aangemaakt bij toevoegen</p>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">⚠️ Geen slangen geconfigureerd</p>
+                      <p className="text-xs text-yellow-600">Klik op configureren om te beginnen</p>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
+                {/* Technical Specs */}
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="p-2 bg-gray-50 rounded">
                     <p className="font-medium">Gewicht</p>
                     <p>{attachment.gewicht} kg</p>
                   </div>
-                  <div>
+                  <div className="p-2 bg-gray-50 rounded">
                     <p className="font-medium">Werkdruk</p>
                     <p>{attachment.werkdruk} bar</p>
                   </div>
-                  <div>
+                  <div className="p-2 bg-gray-50 rounded">
                     <p className="font-medium">Max druk</p>
                     <p>{attachment.max_druk} bar</p>
                   </div>
-                  <div>
+                  <div className="p-2 bg-gray-50 rounded">
                     <p className="font-medium">Debiet</p>
                     <p>{attachment.debiet} l/min</p>
                   </div>
-                </div>
-
-                <div className="text-xs text-gray-400">
-                  Toegevoegd: {new Date(attachment.created_at).toLocaleDateString('nl-NL')}
                 </div>
               </CardContent>
             </Card>
@@ -1102,102 +952,112 @@ export default function AttachmentsAdmin() {
         </div>
 
         {attachments.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Nog geen aanbouwdelen toegevoegd.</p>
-            <p className="text-sm text-gray-400 mt-2">Voeg het eerste aanbouwdeel toe om te beginnen.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-500">Nog geen aanbouwdelen toegevoegd</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Klik op &apos;Nieuw Aanbouwdeel&apos; om te beginnen
+            </p>
           </div>
         )}
 
         {/* Edit Attachment Dialog */}
         {editingAttachment && (
           <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Aanbouwdeel Bewerken: {editForm.naam}</DialogTitle>
+                <DialogTitle className="text-lg sm:text-xl">Aanbouwdeel Bewerken: {editForm.naam}</DialogTitle>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
                 <div>
-                  <Label htmlFor="edit-naam">Naam</Label>
+                  <Label htmlFor="edit-naam" className="text-sm sm:text-base">Naam</Label>
                   <Input
                     id="edit-naam"
                     value={editForm.naam || ''}
                     onChange={(e) => setEditForm({...editForm, naam: e.target.value})}
+                    className="text-base"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-type">Type</Label>
+                  <Label htmlFor="edit-type" className="text-sm sm:text-base">Type</Label>
                   <Input
                     id="edit-type"
                     value={editForm.type || ''}
                     onChange={(e) => setEditForm({...editForm, type: e.target.value})}
+                    className="text-base"
                   />
                 </div>
 
-                <div className="col-span-2">
-                  <Label htmlFor="edit-beschrijving">Beschrijving</Label>
+                <div className="col-span-1 sm:col-span-2">
+                  <Label htmlFor="edit-beschrijving" className="text-sm sm:text-base">Beschrijving</Label>
                   <Textarea
                     id="edit-beschrijving"
                     value={editForm.beschrijving || ''}
                     onChange={(e) => setEditForm({...editForm, beschrijving: e.target.value})}
+                    className="text-base"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="edit-gewicht">Gewicht (kg)</Label>
+                  <Label htmlFor="edit-gewicht" className="text-sm sm:text-base">Gewicht (kg)</Label>
                   <Input
                     id="edit-gewicht"
                     inputMode="numeric"
                     value={editForm.gewicht || ''}
                     onChange={(e) => setEditForm({...editForm, gewicht: parseInt(e.target.value) || 0})}
+                    className="text-base"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-werkdruk">Werkdruk (bar)</Label>
+                  <Label htmlFor="edit-werkdruk" className="text-sm sm:text-base">Werkdruk (bar)</Label>
                   <Input
                     id="edit-werkdruk"
                     inputMode="numeric"
                     value={editForm.werkdruk || ''}
                     onChange={(e) => setEditForm({...editForm, werkdruk: parseInt(e.target.value) || 0})}
+                    className="text-base"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-max_druk">Max Druk (bar)</Label>
+                  <Label htmlFor="edit-max_druk" className="text-sm sm:text-base">Max Druk (bar)</Label>
                   <Input
                     id="edit-max_druk"
                     inputMode="numeric"
                     value={editForm.max_druk || ''}
                     onChange={(e) => setEditForm({...editForm, max_druk: parseInt(e.target.value) || 0})}
+                    className="text-base"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-debiet">Debiet (l/min)</Label>
+                  <Label htmlFor="edit-debiet" className="text-sm sm:text-base">Debiet (l/min)</Label>
                   <Input
                     id="edit-debiet"
                     inputMode="numeric"
                     value={editForm.debiet || ''}
                     onChange={(e) => setEditForm({...editForm, debiet: parseInt(e.target.value) || 0})}
+                    className="text-base"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-vermogen">Vermogen (W)</Label>
+                  <Label htmlFor="edit-vermogen" className="text-sm sm:text-base">Vermogen (W)</Label>
                   <Input
                     id="edit-vermogen"
                     inputMode="numeric"
                     value={editForm.vermogen || ''}
                     onChange={(e) => setEditForm({...editForm, vermogen: parseInt(e.target.value) || 0})}
+                    className="text-base"
                   />
                 </div>
 
                 {/* Image Upload Section for Edit */}
-                <div className="col-span-2">
-                  <Label>Foto van het Aanbouwdeel</Label>
+                <div className="col-span-1 sm:col-span-2">
+                  <Label className="text-sm sm:text-base">Foto van het Aanbouwdeel</Label>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <label htmlFor="edit-attachment-image" className="flex-1">
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors">
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 sm:p-4 text-center cursor-pointer hover:border-gray-400 transition-colors tap-target">
                           <div className="flex flex-col items-center gap-2">
-                            <Upload className="w-8 h-8 text-gray-400" />
-                            <span className="text-sm text-gray-600">
+                            <Upload className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
+                            <span className="text-xs sm:text-sm text-gray-600">
                               Klik om een nieuwe foto te selecteren
                             </span>
                             <span className="text-xs text-gray-400">
@@ -1222,13 +1082,13 @@ export default function AttachmentsAdmin() {
                           alt="Preview"
                           width={400}
                           height={192}
-                          className="w-full h-48 object-cover rounded-lg border"
+                          className="w-full h-40 sm:h-48 object-cover rounded-lg border"
                         />
                         <Button
                           type="button"
                           variant="destructive"
                           size="sm"
-                          className="absolute top-2 right-2"
+                          className="absolute top-2 right-2 tap-target"
                           onClick={() => {
                             setEditImagePreview(null);
                             setEditForm({...editForm, imageFile: undefined, afbeelding: ''});
@@ -1241,11 +1101,11 @@ export default function AttachmentsAdmin() {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <Button variant="outline" onClick={cancelEditing}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6">
+                <Button variant="outline" onClick={cancelEditing} className="touch-btn">
                   Annuleren
                 </Button>
-                <Button onClick={saveAttachment} disabled={uploadingImage}>
+                <Button onClick={saveAttachment} disabled={uploadingImage} className="touch-btn">
                   {uploadingImage ? 'Uploaden...' : 'Wijzigingen Opslaan'}
                 </Button>
               </div>
@@ -1255,43 +1115,43 @@ export default function AttachmentsAdmin() {
 
         {/* QR Code Dialog */}
         <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[95vw] sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>QR-code voor {currentQrAttachment?.naam}</DialogTitle>
+              <DialogTitle className="text-lg">QR-code voor {currentQrAttachment?.naam}</DialogTitle>
               <p className="text-sm text-gray-600">
                 Scan deze QR-code om aanbouwdeel informatie te bekijken
               </p>
             </DialogHeader>
             <div className="flex flex-col items-center space-y-4">
               {qrCodeData && (
-                <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+                <div className="bg-white p-3 sm:p-4 rounded-lg border-2 border-gray-200">
                   <Image
                     src={qrCodeData}
                     alt={`QR-code voor ${currentQrAttachment?.naam}`}
-                    width={250}
-                    height={250}
-                    className="rounded"
+                    width={200}
+                    height={200}
+                    className="rounded w-48 h-48 sm:w-64 sm:h-64"
                   />
                 </div>
               )}
               <div className="text-center">
-                <p className="font-medium">{currentQrAttachment?.naam}</p>
-                <p className="text-sm text-gray-600">{currentQrAttachment?.type}</p>
-                <p className="text-sm text-gray-600">
+                <p className="font-medium text-sm sm:text-base">{currentQrAttachment?.naam}</p>
+                <p className="text-xs sm:text-sm text-gray-600">{currentQrAttachment?.type}</p>
+                <p className="text-xs sm:text-sm text-gray-600">
                   {currentQrAttachment?.aantal_slangen} slangen - {currentQrAttachment?.gewicht}kg
                 </p>
               </div>
-              <div className="flex gap-2 w-full">
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
                 <Button 
                   variant="outline" 
                   onClick={() => setQrDialogOpen(false)}
-                  className="flex-1"
+                  className="flex-1 touch-btn"
                 >
                   Sluiten
                 </Button>
                 <Button 
                   onClick={downloadQRCodeFromDialog}
-                  className="flex-1"
+                  className="flex-1 touch-btn"
                 >
                   Download PNG
                 </Button>
@@ -1302,4 +1162,6 @@ export default function AttachmentsAdmin() {
       </div>
     </div>
   );
-} 
+}
+
+export default AttachmentsAdmin; 
