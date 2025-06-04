@@ -1,133 +1,668 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Machine } from '@/components/dashboard/MachineList';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Settings, LogOut, QrCode, Search, CheckCircle, XCircle, Link, Camera } from 'lucide-react';
 import Image from 'next/image';
+import type { User } from '@supabase/auth-helpers-nextjs';
+import { Badge } from '@/components/ui/badge';
+import QRScanner from '@/components/ui/QRScanner';
+import { toast } from 'sonner';
+
+interface ExtendedMachine {
+  id: string;
+  naam: string;
+  beschrijving: string;
+  type: string;
+  afbeelding?: string;
+  kenteken?: string;
+  hydraulische_inputs?: number;
+  gewicht?: number;
+  werkdruk?: number;
+  max_druk?: number;
+  debiet?: number;
+  vermogen?: number;
+  machine_hydraulic_inputs?: HydraulicInput[];
+}
+
+interface HydraulicInput {
+  id: string;
+  input_nummer: number;
+  input_kleur: string;
+  input_label: string;
+  functie_beschrijving: string;
+  volgorde: number;
+  druk_rating?: number;
+  debiet_rating?: number;
+}
+
+interface Attachment {
+  id: string;
+  naam: string;
+  beschrijving: string;
+  type: string;
+  afbeelding?: string;
+  gewicht: number;
+  werkdruk: number;
+  max_druk: number;
+  debiet?: number;
+  vermogen?: number;
+  aantal_slangen?: number;
+  attachment_hydraulic_hoses?: HydraulicHose[];
+}
+
+interface HydraulicHose {
+  id: string;
+  hose_nummer: number;
+  hose_kleur: string;
+  hose_label: string;
+  functie_beschrijving: string;
+  volgorde: number;
+  druk_rating?: number;
+  debiet_rating?: number;
+}
 
 export default function DashboardPage() {
-  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machines, setMachines] = useState<ExtendedMachine[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [selectedMachine, setSelectedMachine] = useState<ExtendedMachine | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const [loading, setLoading] = useState(true);
-  const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
-  const qrRef = React.useRef<SVGSVGElement | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  
+  // Search states
+  const [showMachineSearch, setShowMachineSearch] = useState(false);
+  const [showAttachmentSearch, setShowAttachmentSearch] = useState(false);
+  const [machineSearchTerm, setMachineSearchTerm] = useState('');
+  const [attachmentSearchTerm, setAttachmentSearchTerm] = useState('');
+  
+  // QR Scanner states
+  const [showMachineScanner, setShowMachineScanner] = useState(false);
+  const [showAttachmentScanner, setShowAttachmentScanner] = useState(false);
+  
   const router = useRouter();
+  const supabase = createClientComponentClient();
+
+  const fetchData = useCallback(async () => {
+    try {
+      // Authentication check (simplified for space)
+      let session = null;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          session = sessionData.session;
+          break;
+        }
+        if (attempt < 5) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      if (!session) {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        if (refreshData?.session) {
+          session = refreshData.session;
+        }
+      }
+      
+      if (!session) {
+        setMachines([]);
+        setAttachments([]);
+        setLoading(false);
+        return;
+      }
+
+      setUser(session.user);
+
+      // Check admin status - both email-based and database role-based
+      let adminStatus = false;
+      
+      // First check email for admin
+      if (session.user.email?.includes('admin')) {
+        adminStatus = true;
+      } else {
+        // Then check database role
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .single();
+          
+          if (profile && profile.role === 'admin') {
+            adminStatus = true;
+          }
+        } catch (error) {
+          console.log('Could not check database admin role:', error);
+        }
+      }
+      
+      setIsAdmin(adminStatus);
+
+      // Fetch machines with hydraulic inputs
+      const { data: machinesData, error: machinesError } = await supabase
+        .from('machines')
+        .select(`
+          *,
+          machine_hydraulic_inputs (*)
+        `);
+
+      if (!machinesError && machinesData) {
+        setMachines(machinesData);
+      }
+
+      // Fetch attachments with hydraulic hoses
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('attachments')
+        .select(`
+          *,
+          attachment_hydraulic_hoses (*)
+        `);
+
+      if (!attachmentsError && attachmentsData) {
+        setAttachments(attachmentsData);
+      }
+
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, router]);
 
   useEffect(() => {
-    fetch('/api/machines')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setMachines(data);
-        } else {
-          setMachines([]);
-          console.error('Error fetching machines:', data?.error || data);
-        }
-        setLoading(false);
-      });
-  }, []);
+    fetchData();
+  }, [fetchData]);
 
-  const handleShowQR = (machine: Machine) => {
-    setSelectedMachine(machine);
-    setQrDialogOpen(true);
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      router.push('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   };
 
-  const handleSelectMachine = (machine: Machine) => {
-    router.push(`/dashboard/machines/${machine.id}/attachments`);
-  };
-
-  const handleDownloadQR = () => {
-    if (!qrRef.current) return;
-    const svg = qrRef.current;
-    const serializer = new XMLSerializer();
-    const svgString = serializer.serializeToString(svg);
-    const canvas = document.createElement('canvas');
-    const img = new window.Image();
-    img.onload = function () {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        const pngFile = canvas.toDataURL('image/png');
-        const downloadLink = document.createElement('a');
-        downloadLink.href = pngFile;
-        downloadLink.download = `qr-${selectedMachine?.naam || 'machine'}.png`;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-      }
+  const checkCompatibility = () => {
+    if (!selectedMachine || !selectedAttachment) return null;
+    
+    const machineInputs = selectedMachine.machine_hydraulic_inputs || [];
+    const attachmentHoses = selectedAttachment.attachment_hydraulic_hoses || [];
+    
+    // Basic compatibility check
+    const hasMatchingConnections = machineInputs.length > 0 && attachmentHoses.length > 0;
+    const pressureCompatible = (selectedMachine.max_druk || 0) >= selectedAttachment.werkdruk;
+    
+    return {
+      compatible: hasMatchingConnections && pressureCompatible,
+      machineInputs: machineInputs.length,
+      attachmentHoses: attachmentHoses.length,
+      pressureMatch: pressureCompatible
     };
-    img.src = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(svgString)));
   };
 
-  if (loading) return <div>Loading...</div>;
+  const filteredMachines = machines.filter(machine =>
+    machine.naam.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
+    machine.type.toLowerCase().includes(machineSearchTerm.toLowerCase())
+  );
+
+  const filteredAttachments = attachments.filter(attachment =>
+    attachment.naam.toLowerCase().includes(attachmentSearchTerm.toLowerCase()) ||
+    attachment.type.toLowerCase().includes(attachmentSearchTerm.toLowerCase())
+  );
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+
+  const compatibility = checkCompatibility();
+
+  const handleMachineScan = (qrData: string) => {
+    try {
+      // Try to parse QR data as JSON (machine info)
+      const machineInfo = JSON.parse(qrData);
+      
+      // Find the machine by ID
+      const machine = machines.find(m => m.id === machineInfo.id);
+      if (machine) {
+        setSelectedMachine(machine);
+        setShowMachineScanner(false);
+        setShowMachineSearch(false);
+        toast.success(`Machine "${machine.naam}" geselecteerd!`);
+      } else {
+        toast.error('Machine niet gevonden in database');
+      }
+    } catch {
+      // If not JSON, try to find by direct ID match
+      const machine = machines.find(m => m.id === qrData);
+      if (machine) {
+        setSelectedMachine(machine);
+        setShowMachineScanner(false);
+        setShowMachineSearch(false);
+        toast.success(`Machine "${machine.naam}" geselecteerd!`);
+      } else {
+        toast.error('Ongeldige QR-code voor machine');
+      }
+    }
+  };
+
+  const handleAttachmentScan = (qrData: string) => {
+    try {
+      // Try to parse QR data as JSON (attachment info)
+      const attachmentInfo = JSON.parse(qrData);
+      
+      // Find the attachment by ID
+      const attachment = attachments.find(a => a.id === attachmentInfo.id);
+      if (attachment) {
+        setSelectedAttachment(attachment);
+        setShowAttachmentScanner(false);
+        setShowAttachmentSearch(false);
+        toast.success(`Aanbouwdeel "${attachment.naam}" geselecteerd!`);
+      } else {
+        toast.error('Aanbouwdeel niet gevonden in database');
+      }
+    } catch {
+      // If not JSON, try to find by direct ID match
+      const attachment = attachments.find(a => a.id === qrData);
+      if (attachment) {
+        setSelectedAttachment(attachment);
+        setShowAttachmentScanner(false);
+        setShowAttachmentSearch(false);
+        toast.success(`Aanbouwdeel "${attachment.naam}" geselecteerd!`);
+      } else {
+        toast.error('Ongeldige QR-code voor aanbouwdeel');
+      }
+    }
+  };
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Hydraulische Machines Mechielsen</h1>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {machines.map((machine) => (
-            <Card
-              key={machine.id}
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => handleSelectMachine(machine)}
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8 bg-white rounded-lg p-6 shadow-sm">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">Mechielsen Dashboard</h1>
+            {user && (
+              <p className="text-gray-600 mt-1">Welkom {user.email}</p>
+            )}
+          </div>
+          
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/admin?verified=true&email=${encodeURIComponent(user?.email || '')}`)}
+                className="flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4" />
+                Admin Panel
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              className="flex items-center gap-2"
             >
-              <CardHeader>
-                {machine.afbeelding && (
-                  <Image
-                    src={`/images/${machine.afbeelding}`}
-                    alt={machine.naam}
-                    width={400}
-                    height={192}
-                    className="w-full h-48 object-contain mb-4 rounded"
-                    style={{ objectFit: 'contain' }}
-                    priority
-                  />
-                )}
-                <CardTitle>{machine.naam}</CardTitle>
-                <CardDescription>{machine.type}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 mb-4">{machine.beschrijving}</p>
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleShowQR(machine);
-                  }}
-                >
-                  Toon QR-code
-                </Button>
+              <LogOut className="w-4 h-4" />
+              Uitloggen
+            </Button>
+          </div>
+        </div>
+
+        {/* Compatibility Status */}
+        {(selectedMachine || selectedAttachment) && (
+          <div className="mb-6">
+            <Card className={`border-2 ${
+              compatibility?.compatible 
+                ? 'border-green-300 bg-green-50' 
+                : selectedMachine && selectedAttachment 
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-yellow-300 bg-yellow-50'
+            }`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {compatibility?.compatible ? (
+                      <CheckCircle className="w-6 h-6 text-green-600" />
+                    ) : selectedMachine && selectedAttachment ? (
+                      <XCircle className="w-6 h-6 text-red-600" />
+                    ) : (
+                      <Link className="w-6 h-6 text-yellow-600" />
+                    )}
+                    <div>
+                      <h3 className="font-semibold">
+                        {compatibility?.compatible 
+                          ? 'Compatibel! Deze combinatie kan worden gebruikt.' 
+                          : selectedMachine && selectedAttachment 
+                            ? 'Niet compatibel - Controleer specificaties.'
+                            : 'Selecteer een machine en aanbouwdeel om compatibiliteit te checken.'
+                        }
+                      </h3>
+                      {compatibility && (
+                        <p className="text-sm text-gray-600">
+                          Machine inputs: {compatibility.machineInputs} | 
+                          Attachment hoses: {compatibility.attachmentHoses} | 
+                          Druk: {compatibility.pressureMatch ? '✓' : '✗'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {selectedMachine && selectedAttachment && compatibility?.compatible && (
+                    <Button 
+                      onClick={() => router.push(`/dashboard/machines/${selectedMachine.id}/visual-config`)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      Configureren
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      </div>
-
-      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-        <DialogContent>
-          <DialogTitle>QR Code voor {selectedMachine?.naam}</DialogTitle>
-          <div className="flex flex-col items-center gap-4">
-            {selectedMachine && (
-              <QRCodeSVG
-                ref={qrRef}
-                value={`${window.location.origin}/dashboard/machines/${selectedMachine.id}/attachments`}
-                size={256}
-                level="H"
-                includeMargin={true}
-              />
-            )}
-            <Button onClick={handleDownloadQR}>Download QR Code</Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* Machines Section */}
+          <Card className="h-fit">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="w-5 h-5" />
+                  Machines
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowMachineSearch(!showMachineSearch)}
+                    className="flex items-center gap-2"
+                  >
+                    <Search className="w-4 h-4" />
+                    Geen QR code
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowMachineScanner(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    Scan QR
+                  </Button>
+                </div>
+              </div>
+              
+              {showMachineSearch && (
+                <div className="mt-4">
+                  <Input
+                    placeholder="Zoek machines..."
+                    value={machineSearchTerm}
+                    onChange={(e) => setMachineSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              )}
+            </CardHeader>
+            
+            <CardContent>
+              {!selectedMachine && !showMachineSearch && (
+                <div className="text-center py-12 text-gray-500">
+                  <QrCode className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <h3 className="text-lg font-medium mb-2">Geen machine geselecteerd</h3>
+                  <p className="text-sm">Scan een QR code of zoek handmatig</p>
+                </div>
+              )}
+              
+              {selectedMachine && (
+                <div className="space-y-4">
+                  <div className="relative">
+                    {selectedMachine.afbeelding && (
+                      <div className="w-full h-48 rounded-lg overflow-hidden bg-gray-100 mb-4">
+                        <Image
+                          src={selectedMachine.afbeelding}
+                          alt={selectedMachine.naam}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      <Badge variant="secondary">Geselecteerd</Badge>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-xl font-bold">{selectedMachine.naam}</h3>
+                    <p className="text-gray-600">{selectedMachine.type}</p>
+                    <p className="text-sm text-gray-500 mt-2">{selectedMachine.beschrijving}</p>
+                    
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                      {selectedMachine.hydraulische_inputs && (
+                        <div>
+                          <span className="font-medium">Inputs:</span> {selectedMachine.hydraulische_inputs}
+                        </div>
+                      )}
+                      {selectedMachine.max_druk && (
+                        <div>
+                          <span className="font-medium">Max druk:</span> {selectedMachine.max_druk} bar
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedMachine(null)}
+                    className="w-full"
+                  >
+                    Andere machine selecteren
+                  </Button>
+                </div>
+              )}
+              
+              {showMachineSearch && (
+                <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                  {filteredMachines.map((machine) => (
+                    <Card
+                      key={machine.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300"
+                      onClick={() => {
+                        setSelectedMachine(machine);
+                        setShowMachineSearch(false);
+                        setMachineSearchTerm('');
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          {machine.afbeelding && (
+                            <div className="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                              <Image
+                                src={machine.afbeelding}
+                                alt={machine.naam}
+                                width={64}
+                                height={64}
+                                className="object-cover w-full h-full"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <h4 className="font-medium">{machine.naam}</h4>
+                            <p className="text-sm text-gray-600">{machine.type}</p>
+                            <p className="text-xs text-gray-500">
+                              {machine.hydraulische_inputs} inputs
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Attachments Section */}
+          <Card className="h-fit">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Aanbouwdelen
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAttachmentSearch(!showAttachmentSearch)}
+                    className="flex items-center gap-2"
+                  >
+                    <Search className="w-4 h-4" />
+                    Geen QR code
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAttachmentScanner(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    Scan QR
+                  </Button>
+                </div>
+              </div>
+              
+              {showAttachmentSearch && (
+                <div className="mt-4">
+                  <Input
+                    placeholder="Zoek aanbouwdelen..."
+                    value={attachmentSearchTerm}
+                    onChange={(e) => setAttachmentSearchTerm(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+              )}
+            </CardHeader>
+            
+            <CardContent>
+              {!selectedAttachment && !showAttachmentSearch && (
+                <div className="text-center py-12 text-gray-500">
+                  <Settings className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <h3 className="text-lg font-medium mb-2">Geen aanbouwdeel geselecteerd</h3>
+                  <p className="text-sm">Scan een QR code of zoek handmatig</p>
+                </div>
+              )}
+              
+              {selectedAttachment && (
+                <div className="space-y-4">
+                  <div className="relative">
+                    {selectedAttachment.afbeelding && (
+                      <div className="w-full h-48 rounded-lg overflow-hidden bg-gray-100 mb-4">
+                        <Image
+                          src={selectedAttachment.afbeelding}
+                          alt={selectedAttachment.naam}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      <Badge variant="secondary">Geselecteerd</Badge>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-xl font-bold">{selectedAttachment.naam}</h3>
+                    <p className="text-gray-600">{selectedAttachment.type}</p>
+                    <p className="text-sm text-gray-500 mt-2">{selectedAttachment.beschrijving}</p>
+                    
+                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium">Gewicht:</span> {selectedAttachment.gewicht} kg
+                      </div>
+                      <div>
+                        <span className="font-medium">Werkdruk:</span> {selectedAttachment.werkdruk} bar
+                      </div>
+                      {selectedAttachment.aantal_slangen && (
+                        <div>
+                          <span className="font-medium">Slangen:</span> {selectedAttachment.aantal_slangen}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedAttachment(null)}
+                    className="w-full"
+                  >
+                    Ander aanbouwdeel selecteren
+                  </Button>
+                </div>
+              )}
+              
+              {showAttachmentSearch && (
+                <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                  {filteredAttachments.map((attachment) => (
+                    <Card
+                      key={attachment.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300"
+                      onClick={() => {
+                        setSelectedAttachment(attachment);
+                        setShowAttachmentSearch(false);
+                        setAttachmentSearchTerm('');
+                      }}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          {attachment.afbeelding && (
+                            <div className="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                              <Image
+                                src={attachment.afbeelding}
+                                alt={attachment.naam}
+                                width={64}
+                                height={64}
+                                className="object-cover w-full h-full"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <h4 className="font-medium">{attachment.naam}</h4>
+                            <p className="text-sm text-gray-600">{attachment.type}</p>
+                            <p className="text-xs text-gray-500">
+                              {attachment.werkdruk} bar | {attachment.gewicht} kg
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* QR Scanners */}
+        {showMachineScanner && (
+          <QRScanner
+            onScan={handleMachineScan}
+            onClose={() => setShowMachineScanner(false)}
+            label="Scan Machine QR Code"
+          />
+        )}
+        
+        {showAttachmentScanner && (
+          <QRScanner
+            onScan={handleAttachmentScan}
+            onClose={() => setShowAttachmentScanner(false)}
+            label="Scan Aanbouwdeel QR Code"
+          />
+        )}
+      </div>
     </div>
   );
 } 
