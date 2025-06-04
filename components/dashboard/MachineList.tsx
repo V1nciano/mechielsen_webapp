@@ -40,13 +40,16 @@ export default function MachineList({ machines, onSelect }: MachineListProps) {
             <div className="text-sm text-gray-600">{machine.beschrijving}</div>
             {machine.afbeelding && (
               <Image
-                src={`/images/${machine.afbeelding}`}
+                src={machine.afbeelding}
                 alt={machine.naam}
                 width={300}
                 height={200}
                 className="my-2"
                 style={{ objectFit: 'contain' }}
                 priority
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             )}
             <div className="text-xs text-gray-400">Type: {machine.type}</div>

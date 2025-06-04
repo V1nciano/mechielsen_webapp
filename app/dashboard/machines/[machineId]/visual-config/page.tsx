@@ -1,146 +1,44 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Settings, Cable, Zap, CheckCircle, AlertCircle, Info, AlertTriangle, HelpCircle, BookOpen, Wrench } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, Zap, Cable, ArrowRight, CheckCircle2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import Image from 'next/image';
 
 interface Machine {
   id: string;
   naam: string;
   type: string;
   beschrijving?: string;
+  afbeelding?: string;
 }
 
 interface HydraulicInput {
   id: string;
   input_nummer: number;
-  input_kleur: string;
-  input_label: string;
-  functie_beschrijving: string;
-  volgorde: number;
+  kleur: string;
 }
 
 interface Attachment {
   id: string;
   naam: string;
-  beschrijving: string;
   type: string;
   afbeelding?: string;
+  hydraulic_hoses?: AttachmentHose[];
 }
 
-interface SlangConnection {
-  id?: string;
-  machine_id: string;
-  hydraulic_input_id: string;
-  attachment_id: string;
-  slang_nummer: number;
-  slang_kleur: string;
-  slang_label: string;
-  functie_beschrijving: string;
-  instructie_tekst?: string;
+interface AttachmentHose {
+  id: string;
+  kleur: string;
   volgorde: number;
-  connection_type?: 'single_acting' | 'double_acting' | 'high_flow' | 'low_flow';
-  pressure_rating?: number;
-  flow_rating?: number;
 }
 
-// Hydraulic Documentation Constants
-const HYDRAULIC_DOCUMENTATION = {
-  connection_types: {
-    single_acting: {
-      name: 'Enkelwerkend',
-      description: 'Voor functies die alleen in één richting werken (bijv. kippen, heffen met zwaartekracht terugkeer)',
-      pressure: '175-350 bar',
-      flow: '20-80 l/min',
-      connections: ['P (Druk)', 'T (Tank)'],
-      safety_notes: 'Controleer dat terugkeer via zwaartekracht of veer mogelijk is',
-      color_coding: 'Meestal gele of rode slangen'
-    },
-    double_acting: {
-      name: 'Dubbelwerkend', 
-      description: 'Voor functies die in beide richtingen hydraulisch werken (bijv. grijpers, rotators)',
-      pressure: '175-350 bar',
-      flow: '40-120 l/min',
-      connections: ['A (Functie 1)', 'B (Functie 2)', 'P (Druk)', 'T (Tank)'],
-      safety_notes: 'Beide leidingen onder druk - extra voorzichtigheid bij ontkoppeling',
-      color_coding: 'Rode en blauwe slangen voor A/B poorten'
-    },
-    high_flow: {
-      name: 'Hoge Doorstroming',
-      description: 'Voor zware aanbouwdelen die veel hydraulische kracht vereisen',
-      pressure: '175-350 bar', 
-      flow: '80-200 l/min',
-      connections: ['P (Druk)', 'T (Tank)', 'A', 'B'],
-      safety_notes: 'Hogere druk en doorstroming - gebruik juiste slangdiameter',
-      color_coding: 'Dikkere slangen, vaak met speciale markeringen'
-    },
-    low_flow: {
-      name: 'Lage Doorstroming',
-      description: 'Voor lichte aanbouwdelen of precisiewerk',
-      pressure: '175-250 bar',
-      flow: '10-40 l/min', 
-      connections: ['P (Druk)', 'T (Tank)'],
-      safety_notes: 'Lagere druk geschikt voor gevoelige aanbouwdelen',
-      color_coding: 'Standaard slangkleuren'
-    }
-  },
-  safety_procedures: {
-    before_connection: [
-      'Zet de machine uit en verwijder de sleutel',
-      'Laat hydraulische druk volledig aflopen',
-      'Reinig alle koppelingen van vuil en debris', 
-      'Controleer slangen op beschadigingen',
-      'Gebruik persoonlijke beschermingsmiddelen'
-    ],
-    during_connection: [
-      'Volg de juiste volgorde: eerst drukleiding (P), dan tank (T)',
-      'Voor dubbelwerkende: eerst A, dan B',
-      'Draai koppelingen handvast, niet overtrekken',
-      'Controleer dat O-ringen correct geplaatst zijn'
-    ],
-    after_connection: [
-      'Start machine en laat warm draaien',
-      'Test alle functies op lage snelheid',
-      'Controleer op lekkages bij alle koppelingen',
-      'Verifieer correcte werking van veiligheidssystemen'
-    ]
-  },
-  troubleshooting: {
-    'Geen beweging': [
-      'Controleer of machine draait',
-      'Verifieer hydraulische druk',
-      'Check slangaansluitingen',
-      'Controleer bedieningshendels'
-    ],
-    'Langzame beweging': [
-      'Controleer hydraulische olie niveau',
-      'Verifieer slangdiameter',
-      'Check op geknipte slangen',
-      'Controleer olie viscositeit'
-    ],
-    'Lekkage': [
-      'Stop machine onmiddellijk',
-      'Controleer alle koppelingen',
-      'Vervang beschadigde O-ringen',
-      'Draai koppelingen niet te vast aan'
-    ]
-  }
-};
-
-const SLANG_KLEUREN = [
+const KLEUREN = [
   { value: 'rood', label: 'Rood', color: 'bg-red-500', textColor: 'text-white' },
   { value: 'blauw', label: 'Blauw', color: 'bg-blue-500', textColor: 'text-white' },
   { value: 'geel', label: 'Geel', color: 'bg-yellow-400', textColor: 'text-black' },
@@ -155,69 +53,21 @@ export default function VisualConfigPage() {
   const params = useParams();
   const machineId = params?.machineId as string;
   
-  console.log('🏭 Visual Config Page - Machine ID:', { 
-    machineId, 
-    params, 
-    type: typeof machineId,
-    exists: !!machineId 
-  });
-
   const [machine, setMachine] = useState<Machine | null>(null);
   const [hydraulicInputs, setHydraulicInputs] = useState<HydraulicInput[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [connections, setConnections] = useState<SlangConnection[]>([]);
-  const [selectedConnection, setSelectedConnection] = useState<SlangConnection | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showGuidance, setShowGuidance] = useState(false);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
-  // Helper functions for hydraulic documentation
-  const getConnectionTypeRecommendation = (attachmentType: string) => {
-    const recommendations: Record<string, string> = {
-      'grijper': 'double_acting',
-      'hamer': 'high_flow', 
-      'boor': 'high_flow',
-      'veegmachine': 'single_acting',
-      'knipper': 'double_acting',
-      'rotator': 'double_acting',
-      'hark': 'single_acting'
-    };
-    return recommendations[attachmentType.toLowerCase()] || 'double_acting';
-  };
-
-  const getFlowPressureRecommendation = (connectionType: string) => {
-    const specs = HYDRAULIC_DOCUMENTATION.connection_types[connectionType as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types];
-    if (!specs) return { pressure: 250, flow: 60 };
-    
-    const pressureRange = specs.pressure.split('-').map(p => parseInt(p));
-    const flowRange = specs.flow.split('-').map(f => parseInt(f));
-    
-    return {
-      pressure: Math.round((pressureRange[0] + pressureRange[1]) / 2),
-      flow: Math.round((flowRange[0] + flowRange[1]) / 2)
-    };
-  };
-
-  const getConnectionInstructions = (connectionType: string) => {
-    const type = HYDRAULIC_DOCUMENTATION.connection_types[connectionType as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types];
-    if (!type) return '';
-    
-    return `${type.description}\n\nVereiste aansluitingen: ${type.connections.join(', ')}\n\nVeiligheidsinstructie: ${type.safety_notes}\n\nKleurcodering: ${type.color_coding}`;
-  };
-
-  useEffect(() => {
-    if (!machineId) return;
-    fetchData();
-  }, [machineId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // Fetch machine info
       const { data: machineData, error: machineError } = await supabase
         .from('machines')
-        .select('id, naam, type, beschrijving')
+        .select('*')
         .eq('id', machineId)
         .single();
 
@@ -229,33 +79,38 @@ export default function VisualConfigPage() {
 
       setMachine(machineData);
 
-      // Fetch hydraulic inputs
-      const { data: inputsData, error: inputsError } = await supabase
+      // Fetch hydraulic inputs for this machine
+      const { data: hydraulicInputsData, error: hydraulicError } = await supabase
         .from('machine_hydraulic_inputs')
         .select('*')
         .eq('machine_id', machineId)
         .order('volgorde', { ascending: true });
 
-      if (inputsError) {
-        console.error('Error fetching hydraulic inputs:', inputsError);
+      if (hydraulicError) {
+        console.error('Error fetching hydraulic inputs:', hydraulicError);
+        toast.error('Fout bij ophalen hydraulische inputs');
       } else {
-        setHydraulicInputs(inputsData || []);
+        setHydraulicInputs(hydraulicInputsData || []);
       }
 
-      // Fetch attachments for this machine
-      const response = await fetch(`/api/attachments?machineId=${machineId}`);
-      const attachmentsData = await response.json();
-      if (Array.isArray(attachmentsData)) {
-        setAttachments(attachmentsData);
-      }
+      // Fetch attachments for this machine with their hoses
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('attachments')
+        .select(`
+          *,
+          hydraulic_hoses:attachment_hydraulic_hoses(
+            id,
+            kleur,
+            volgorde
+          )
+        `)
+        .order('naam', { ascending: true });
 
-      // Fetch existing connections via API
-      const connectionsResponse = await fetch(`/api/slang-koppelingen?machineId=${machineId}`);
-      if (connectionsResponse.ok) {
-        const connectionsData = await connectionsResponse.json();
-        setConnections(connectionsData || []);
+      if (attachmentsError) {
+        console.error('Error fetching attachments:', attachmentsError);
+        toast.error('Fout bij ophalen aanbouwdelen');
       } else {
-        console.error('Error fetching connections:', await connectionsResponse.text());
+        setAttachments(attachmentsData || []);
       }
 
     } catch (error) {
@@ -263,14 +118,18 @@ export default function VisualConfigPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [machineId, supabase, router]);
 
-  const getKleurDisplay = (kleur: string) => {
-    const kleurInfo = SLANG_KLEUREN.find(k => k.value === kleur);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const getKleurDisplay = (kleur: string, size = 'w-8 h-8') => {
+    const kleurInfo = KLEUREN.find(k => k.value === kleur);
     if (!kleurInfo) return null;
     
     return (
-      <div className={`w-6 h-6 rounded-full ${kleurInfo.color} flex items-center justify-center shadow-sm`}>
+      <div className={`${size} rounded-full ${kleurInfo.color} flex items-center justify-center shadow-sm border-2 border-white`}>
         <span className={`text-xs font-bold ${kleurInfo.textColor}`}>
           {kleur === 'rood' ? 'R' : kleur === 'blauw' ? 'B' : kleur === 'geel' ? 'G' : 
            kleur === 'groen' ? 'GR' : kleur === 'zwart' ? 'Z' : kleur === 'wit' ? 'W' :
@@ -280,174 +139,28 @@ export default function VisualConfigPage() {
     );
   };
 
-  const handleCreateConnection = (inputId: string, attachmentId: string) => {
-    console.log('🔧 Creating connection with:', {
-      machineId,
-      inputId,
-      attachmentId,
-      machineIdType: typeof machineId,
-      inputIdType: typeof inputId,
-      attachmentIdType: typeof attachmentId
-    });
-
-    // Validate required fields
-    if (!machineId || !inputId || !attachmentId) {
-      console.error('❌ Missing required fields:', {
-        machineId: !machineId,
-        inputId: !inputId,
-        attachmentId: !attachmentId
-      });
-      toast.error('Ontbrekende vereiste velden voor het maken van de verbinding');
-      return;
-    }
-
-    const input = hydraulicInputs.find(i => i.id === inputId);
-    const attachment = attachments.find(a => a.id === attachmentId);
+  const getMatchingConnections = () => {
+    const connections: Array<{inputId: string, inputKleur: string, inputNummer: number, attachmentId: string, attachmentNaam: string, hoseKleur: string, hoseVolgorde: number}> = [];
     
-    if (!input || !attachment) {
-      console.error('❌ Input or attachment not found:', { input: !!input, attachment: !!attachment });
-      return;
-    }
-
-    // Get automated recommendations
-    const recommendedType = getConnectionTypeRecommendation(attachment.type);
-    const { pressure, flow } = getFlowPressureRecommendation(recommendedType);
-    const instructions = getConnectionInstructions(recommendedType);
-
-    const newConnection: SlangConnection = {
-      machine_id: machineId,
-      hydraulic_input_id: inputId,
-      attachment_id: attachmentId,
-      slang_nummer: connections.length + 1,
-      slang_kleur: input.input_kleur,
-      slang_label: `${input.input_label} → ${attachment.naam}`,
-      functie_beschrijving: `Verbinding tussen ${input.functie_beschrijving} en ${attachment.naam}`,
-      instructie_tekst: instructions,
-      volgorde: connections.length + 1,
-      connection_type: recommendedType as 'single_acting' | 'double_acting' | 'high_flow' | 'low_flow',
-      pressure_rating: pressure,
-      flow_rating: flow
-    };
-
-    console.log('🔗 Created connection object:', newConnection);
-
-    setSelectedConnection(newConnection);
-    setIsEditing(true);
-    toast.success(`Automatische aanbeveling: ${HYDRAULIC_DOCUMENTATION.connection_types[recommendedType as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.name}`);
-  };
-
-  const handleSaveConnection = async () => {
-    if (!selectedConnection) return;
-
-    // Validate required fields
-    if (!selectedConnection.machine_id || !selectedConnection.hydraulic_input_id || !selectedConnection.attachment_id) {
-      console.error('❌ Missing required fields in save:', {
-        machine_id: !selectedConnection.machine_id,
-        hydraulic_input_id: !selectedConnection.hydraulic_input_id,
-        attachment_id: !selectedConnection.attachment_id
+    hydraulicInputs.forEach(input => {
+      attachments.forEach(attachment => {
+        attachment.hydraulic_hoses?.forEach(hose => {
+          if (input.kleur === hose.kleur) {
+            connections.push({
+              inputId: input.id,
+              inputKleur: input.kleur,
+              inputNummer: input.input_nummer,
+              attachmentId: attachment.id,
+              attachmentNaam: attachment.naam,
+              hoseKleur: hose.kleur,
+              hoseVolgorde: hose.volgorde
+            });
+          }
+        });
       });
-      toast.error('Ontbrekende vereiste velden voor het opslaan van de verbinding');
-      return;
-    }
-
-    // Ensure all required fields are present
-    const connectionData = {
-      ...selectedConnection,
-      machine_id: machineId,
-      hydraulic_input_id: selectedConnection.hydraulic_input_id,
-      attachment_id: selectedConnection.attachment_id,
-      slang_nummer: selectedConnection.slang_nummer || connections.length + 1,
-      slang_kleur: selectedConnection.slang_kleur,
-      slang_label: selectedConnection.slang_label,
-      functie_beschrijving: selectedConnection.functie_beschrijving,
-      volgorde: selectedConnection.volgorde || connections.length + 1
-    };
-
-    console.log('🚀 Sending connection data to API:', JSON.stringify(connectionData, null, 2));
-
-    try {
-      const response = await fetch('/api/slang-koppelingen', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(connectionData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('❌ API Response Error:', data);
-        toast.error('Fout bij opslaan: ' + (data.error || 'Unknown error'));
-        return;
-      }
-
-      toast.success('Slangverbinding succesvol opgeslagen!');
-      setConnections([...connections, data]);
-      setSelectedConnection(null);
-      setIsEditing(false);
-    } catch (error) {
-      console.error('Error saving connection:', error);
-      toast.error('Er is een fout opgetreden bij het opslaan');
-    }
-  };
-
-  const handleUpdateConnection = async (connection: SlangConnection) => {
-    if (!connection.id) return;
-
-    try {
-      const response = await fetch('/api/slang-koppelingen', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(connection),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error('Fout bij bijwerken: ' + (data.error || 'Unknown error'));
-        return;
-      }
-
-      toast.success('Slangverbinding succesvol bijgewerkt!');
-      setConnections(connections.map(c => c.id === connection.id ? connection : c));
-      setSelectedConnection(null);
-      setIsEditing(false);
-    } catch (error) {
-      console.error('Error updating connection:', error);
-      toast.error('Er is een fout opgetreden bij het bijwerken');
-    }
-  };
-
-  const handleDeleteConnection = async (connectionId: string) => {
-    if (!confirm('Weet je zeker dat je deze slangverbinding wilt verwijderen?')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/slang-koppelingen?id=${connectionId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error('Fout bij verwijderen: ' + (data.error || 'Unknown error'));
-        return;
-      }
-
-      toast.success('Slangverbinding succesvol verwijderd!');
-      setConnections(connections.filter(c => c.id !== connectionId));
-    } catch (error) {
-      console.error('Error deleting connection:', error);
-      toast.error('Er is een fout opgetreden bij het verwijderen');
-    }
-  };
-
-  const getConnectionForInput = (inputId: string, attachmentId: string) => {
-    return connections.find(c => c.hydraulic_input_id === inputId && c.attachment_id === attachmentId);
+    });
+    
+    return connections;
   };
 
   if (loading) {
@@ -461,690 +174,368 @@ export default function VisualConfigPage() {
     );
   }
 
+  const connections = getMatchingConnections();
+
   return (
-    <TooltipProvider>
-      <div className="min-h-screen p-4 md:p-8 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                onClick={() => router.back()}
-                className="flex items-center gap-2"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Terug
-              </Button>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Visuele Slangconfiguratie</h1>
-                <p className="text-gray-600">{machine?.naam} ({machine?.type})</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Dialog open={showGuidance} onOpenChange={setShowGuidance}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" />
-                    Hydrauliek Gids
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Wrench className="w-5 h-5" />
-                      Hydraulische Aansluiting Gids
-                    </DialogTitle>
-                    <DialogDescription>
-                      Uitgebreide gids voor hydraulische aansluitingen, veiligheidsprocedures en probleemoplossing voor uw machine.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <Tabs defaultValue="types" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
-                      <TabsTrigger value="types">Aansluitingstypen</TabsTrigger>
-                      <TabsTrigger value="safety">Veiligheid</TabsTrigger>
-                      <TabsTrigger value="steps">Stap-voor-stap</TabsTrigger>
-                      <TabsTrigger value="troubleshoot">Problemen oplossen</TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="types" className="space-y-4">
-                      {Object.entries(HYDRAULIC_DOCUMENTATION.connection_types).map(([key, type]) => (
-                        <Card key={key}>
-                          <CardHeader>
-                            <CardTitle className="text-lg">{type.name}</CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            <p className="text-sm text-gray-600">{type.description}</p>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <strong>Druk:</strong> {type.pressure}
-                              </div>
-                              <div>
-                                <strong>Doorstroming:</strong> {type.flow}
-                              </div>
-                            </div>
-                            <div className="text-sm">
-                              <strong>Aansluitingen:</strong> {type.connections.join(', ')}
-                            </div>
-                            <Alert>
-                              <AlertTriangle className="h-4 w-4" />
-                              <AlertDescription>{type.safety_notes}</AlertDescription>
-                            </Alert>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </TabsContent>
-
-                    <TabsContent value="safety" className="space-y-4">
-                      <div className="space-y-6">
-                        <div>
-                          <h3 className="font-semibold text-lg mb-3">Voor het aansluiten</h3>
-                          <ul className="space-y-2">
-                            {HYDRAULIC_DOCUMENTATION.safety_procedures.before_connection.map((step, index) => (
-                              <li key={index} className="flex items-start gap-2">
-                                <AlertTriangle className="w-4 h-4 text-red-500 mt-1 flex-shrink-0" />
-                                <span className="text-sm">{step}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-semibold text-lg mb-3">Tijdens het aansluiten</h3>
-                          <ul className="space-y-2">
-                            {HYDRAULIC_DOCUMENTATION.safety_procedures.during_connection.map((step, index) => (
-                              <li key={index} className="flex items-start gap-2">
-                                <Info className="w-4 h-4 text-blue-500 mt-1 flex-shrink-0" />
-                                <span className="text-sm">{step}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        <div>
-                          <h3 className="font-semibold text-lg mb-3">Na het aansluiten</h3>
-                          <ul className="space-y-2">
-                            {HYDRAULIC_DOCUMENTATION.safety_procedures.after_connection.map((step, index) => (
-                              <li key={index} className="flex items-start gap-2">
-                                <CheckCircle className="w-4 h-4 text-green-500 mt-1 flex-shrink-0" />
-                                <span className="text-sm">{step}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="steps" className="space-y-4">
-                      <Alert>
-                        <Info className="h-4 w-4" />
-                        <AlertTitle>Stap-voor-stap Aansluitingsprocedure</AlertTitle>
-                        <AlertDescription>
-                          Volg deze volgorde voor veilige hydraulische aansluitingen
-                        </AlertDescription>
-                      </Alert>
-                      
-                      <div className="space-y-4">
-                        {[
-                          'Selecteer het juiste aanbouwdeel en controleer compatibiliteit',
-                          'Identificeer de hydraulische inputs op de machine', 
-                          'Bepaal het aansluitingstype (enkelwerkend/dubbelwerkend)',
-                          'Kies de juiste slangkleuren en labels',
-                          'Sluit eerst de drukleiding (P) aan',
-                          'Sluit daarna de tankleiding (T) aan', 
-                          'Voor dubbelwerkend: sluit A en B leidingen aan',
-                          'Test de verbinding op lage snelheid',
-                          'Controleer op lekkages en correcte werking'
-                        ].map((step, index) => (
-                          <div key={index} className="flex items-start gap-4 p-3 bg-white rounded-lg border">
-                            <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <span className="text-sm font-semibold text-blue-600">{index + 1}</span>
-                            </div>
-                            <p className="text-sm">{step}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent value="troubleshoot" className="space-y-4">
-                      {Object.entries(HYDRAULIC_DOCUMENTATION.troubleshooting).map(([problem, solutions]) => (
-                        <Card key={problem}>
-                          <CardHeader>
-                            <CardTitle className="text-lg text-red-600">{problem}</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <ul className="space-y-2">
-                              {solutions.map((solution, index) => (
-                                <li key={index} className="flex items-start gap-2">
-                                  <HelpCircle className="w-4 h-4 text-blue-500 mt-1 flex-shrink-0" />
-                                  <span className="text-sm">{solution}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </TabsContent>
-                  </Tabs>
-                </DialogContent>
-              </Dialog>
+    <div className="min-h-screen p-4 md:p-8 bg-gray-50">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              onClick={() => router.back()}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Terug
+            </Button>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Slangconfiguratie</h1>
+              <p className="text-gray-600">{machine?.naam} ({machine?.type})</p>
             </div>
           </div>
+        </div>
 
-          {/* Safety Alert */}
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <AlertTitle className="text-red-800">Veiligheidswaarschuwing</AlertTitle>
-            <AlertDescription className="text-red-700">
-              Zorg altijd dat de machine uitstaat en de hydraulische druk is afgelaten voordat je slangen aansluit of loskoppelt.
-              Draag altijd de juiste persoonlijke beschermingsmiddelen.
-            </AlertDescription>
-          </Alert>
-
-        {/* Visual Configuration Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Machine Side */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-blue-600" />
-                Machine Hydraulische Inputs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {hydraulicInputs.map((input) => (
-                  <div key={input.id} className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                    <div className="flex items-center gap-3">
-                      {getKleurDisplay(input.input_kleur)}
+        {/* Main Layout: Machine links, Verbindingen midden, Aanbouwdelen rechts */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Links: Machine met Hydraulische Inputs */}
+          <div className="lg:col-span-4">
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-blue-600" />
+                  Machine: {machine?.naam}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Machine Image */}
+                {machine?.afbeelding && (
+                  <div className="mb-6">
+                    <Image
+                      src={machine.afbeelding}
+                      alt={machine.naam}
+                      width={300}
+                      height={200}
+                      className="w-full h-48 object-cover rounded-lg border"
+                    />
+                  </div>
+                )}
+                
+                {/* Hydraulische Inputs */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-700 mb-3">Hydraulische Inputs</h3>
+                  {hydraulicInputs.map((input) => (
+                    <div key={input.id} className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border-2 border-blue-100">
+                      {getKleurDisplay(input.kleur, 'w-10 h-10')}
                       <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">Input {input.input_nummer}</p>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <HelpCircle className="w-4 h-4 text-blue-500" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">
-                                <strong>{input.input_label}</strong><br/>
-                                {input.functie_beschrijving}<br/>
-                                Kleur: {input.input_kleur}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <p className="text-sm text-gray-600">{input.input_label}</p>
-                        <p className="text-xs text-gray-500">{input.functie_beschrijving}</p>
+                        <p className="font-medium text-lg">Input {input.input_nummer}</p>
+                        <p className="text-sm text-gray-600 capitalize">{input.kleur} aansluiting</p>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      {attachments.map((attachment) => {
-                        const connection = getConnectionForInput(input.id, attachment.id);
-                        const recommendedType = getConnectionTypeRecommendation(attachment.type);
-                        const typeInfo = HYDRAULIC_DOCUMENTATION.connection_types[recommendedType as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types];
-                        
-                        return (
-                          <div key={attachment.id} className="flex items-center gap-2">
-                            {connection ? (
-                              <div className="flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4 text-green-600" />
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        setSelectedConnection(connection);
-                                        setIsEditing(true);
-                                      }}
-                                      className="text-xs"
-                                    >
-                                      Bewerk → {attachment.naam}
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="space-y-1">
-                                      <p><strong>Type:</strong> {connection.connection_type}</p>
-                                      <p><strong>Druk:</strong> {connection.pressure_rating} bar</p>
-                                      <p><strong>Flow:</strong> {connection.flow_rating} l/min</p>
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleCreateConnection(input.id, attachment.id)}
-                                    className="text-xs"
-                                  >
-                                    + Verbind → {attachment.naam}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <div className="space-y-1">
-                                    <p><strong>Aanbevolen:</strong> {typeInfo?.name}</p>
-                                    <p><strong>Druk:</strong> {typeInfo?.pressure}</p>
-                                    <p><strong>Flow:</strong> {typeInfo?.flow}</p>
-                                    <p className="text-xs text-gray-500">{typeInfo?.description}</p>
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Midden: Verbindingen Overzicht */}
+          <div className="lg:col-span-4">
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ArrowRight className="w-5 h-5 text-green-600" />
+                  Kleur Verbindingen
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {connections.length > 0 ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600 mb-4">
+                      Gevonden verbindingen op basis van kleurcodering:
+                    </p>
+                    {connections.map((conn, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2">
+                          {getKleurDisplay(conn.inputKleur, 'w-6 h-6')}
+                          <span className="text-sm font-medium">Input {conn.inputNummer}</span>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-gray-400" />
+                        <div className="flex items-center gap-2">
+                          {getKleurDisplay(conn.hoseKleur, 'w-6 h-6')}
+                          <div className="text-sm">
+                            <p className="font-medium">{conn.attachmentNaam}</p>
+                            <p className="text-gray-500">Slang {conn.hoseVolgorde}</p>
                           </div>
-                        );
-                      })}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Aansluiting Voltooid Knop */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button 
+                            className="w-full flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                            onClick={() => {
+                              // Find the most connected attachment
+                              const attachmentConnections = connections.reduce((acc, conn) => {
+                                acc[conn.attachmentId] = (acc[conn.attachmentId] || 0) + 1;
+                                return acc;
+                              }, {} as Record<string, number>);
+                              
+                              const mostConnectedId = Object.entries(attachmentConnections)
+                                .sort(([,a], [,b]) => b - a)[0]?.[0];
+                              
+                              if (mostConnectedId) {
+                                const attachment = attachments.find(a => a.id === mostConnectedId);
+                                if (attachment) {
+                                  setSelectedAttachment(attachment);
+                                }
+                              }
+                            }}
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                            Aansluiting Voltooid - Toon Specificaties
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                              <Settings className="w-5 h-5" />
+                              Aansluiting Voltooid: {selectedAttachment?.naam}
+                            </DialogTitle>
+                          </DialogHeader>
+                          
+                          {selectedAttachment && (
+                            <div className="space-y-6">
+                              {/* Attachment Overview & Machine Settings in one box */}
+                              <div className="bg-white border rounded-lg p-6 space-y-6">
+                                {/* Photo and Attachment Info */}
+                                <div className="flex flex-col items-center text-center">
+                                  {selectedAttachment.afbeelding && (
+                                    <Image
+                                      src={selectedAttachment.afbeelding}
+                                      alt={selectedAttachment.naam}
+                                      width={200}
+                                      height={200}
+                                      className="w-48 h-48 object-cover rounded-lg border mb-4"
+                                    />
+                                  )}
+                                  <div>
+                                    <h4 className="font-medium text-xl">{selectedAttachment.naam}</h4>
+                                    <p className="text-gray-600">{selectedAttachment.type}</p>
+                                    <p className="text-sm text-green-600 font-medium mt-2">
+                                      {connections.filter(conn => conn.attachmentId === selectedAttachment.id).length} verbinding(en) actief
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Machine Settings */}
+                                <div className="border-t pt-6">
+                                  <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                                    <Settings className="w-5 h-5 text-orange-600" />
+                                    Machine Instellingen
+                                  </h3>
+                                  <div className="bg-gradient-to-br from-orange-50 to-yellow-50 border-2 border-orange-200 p-4 rounded-xl">
+                                    <h5 className="font-semibold text-orange-800 mb-3">🔧 Aanbevolen Instellingen:</h5>
+                                    <div className="space-y-3">
+                                      <div className="flex justify-between items-center bg-white p-2 rounded">
+                                        <span className="font-medium text-gray-700">Hydraulische Druk:</span>
+                                        <span className="font-bold text-orange-600">200-250 bar</span>
+                                      </div>
+                                      <div className="flex justify-between items-center bg-white p-2 rounded">
+                                        <span className="font-medium text-gray-700">Flow Rate:</span>
+                                        <span className="font-bold text-orange-600">60-100 l/min</span>
+                                      </div>
+                                      <div className="flex justify-between items-center bg-white p-2 rounded">
+                                        <span className="font-medium text-gray-700">Olie Temperatuur:</span>
+                                        <span className="font-bold text-orange-600">40-80°C</span>
+                                      </div>
+                                      <div className="flex justify-between items-center bg-white p-2 rounded">
+                                        <span className="font-medium text-gray-700">Filter Status:</span>
+                                        <span className="font-bold text-red-600">Controleren!</span>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="mt-4 p-3 bg-orange-100 rounded-lg">
+                                      <p className="text-sm text-orange-800 font-medium">
+                                        ⚠️ Controleer deze instellingen op uw machine voordat u het aanbouwdeel gebruikt
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Verbindingen Overzicht */}
+                              <div>
+                                <h3 className="font-semibold text-lg mb-3">Verbindingen Overzicht</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {connections
+                                    .filter(conn => conn.attachmentId === selectedAttachment.id)
+                                    .map((conn, index) => (
+                                      <div key={index} className="border rounded-lg p-4 bg-green-50">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            {getKleurDisplay(conn.inputKleur, 'w-8 h-8')}
+                                            <span className="font-medium">Input {conn.inputNummer}</span>
+                                          </div>
+                                          <ArrowRight className="w-4 h-4 text-gray-400" />
+                                          <div className="flex items-center gap-2">
+                                            {getKleurDisplay(conn.hoseKleur, 'w-8 h-8')}
+                                            <span className="font-medium">Slang {conn.hoseVolgorde}</span>
+                                          </div>
+                                        </div>
+                                        <p className="text-xs text-gray-600">
+                                          Machine input {conn.inputKleur} → Attachment slang {conn.hoseKleur}
+                                        </p>
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
+                              
+                              {/* Veiligheids Instructies */}
+                              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                                <h3 className="font-semibold text-lg mb-3 text-red-800">🚨 Veiligheids Instructies</h3>
+                                <div className="text-sm text-red-700 space-y-2">
+                                  <p>• <strong>Voor aansluiting:</strong> Zet machine uit en laat hydraulische druk aflopen</p>
+                                  <p>• <strong>Tijdens aansluiting:</strong> Controleer alle koppelingen op juiste bevestiging</p>
+                                  <p>• <strong>Na aansluiting:</strong> Test functionaliteit op lage snelheid</p>
+                                  <p>• <strong>Controle:</strong> Check op lekkages bij alle aansluitpunten</p>
+                                </div>
+                              </div>
+                              
+                              {/* Acties */}
+                              <div className="flex justify-between items-center pt-4 border-t">
+                                <Button 
+                                  variant="outline" 
+                                  onClick={() => setCompletionDialogOpen(false)}
+                                >
+                                  Sluiten
+                                </Button>
+                                <Button 
+                                  onClick={() => {
+                                    toast.success(`Aansluiting voltooid voor ${selectedAttachment.naam}!`);
+                                    setCompletionDialogOpen(false);
+                                    router.push('/dashboard');
+                                  }}
+                                  className="bg-green-600 hover:bg-green-700"
+                                >
+                                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                                  Bevestig Aansluiting
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
                     </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="text-gray-400 mb-2">🔍</div>
+                    <p className="text-gray-500">Geen kleurverbindingen gevonden</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Slangkleuren moeten overeenkomen met machine input kleuren
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Rechts: Aanbouwdelen met Slangen */}
+          <div className="lg:col-span-4">
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cable className="w-5 h-5 text-orange-600" />
+                  Aanbouwdelen & Slangen
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} className="border rounded-lg p-4 bg-white">
+                      <div className="flex items-center gap-3 mb-3">
+                        {attachment.afbeelding && (
+                          <Image
+                            src={attachment.afbeelding}
+                            alt={attachment.naam}
+                            width={50}
+                            height={50}
+                            className="w-12 h-12 object-cover rounded border"
+                          />
+                        )}
+                        <div>
+                          <p className="font-medium">{attachment.naam}</p>
+                          <p className="text-sm text-gray-600">{attachment.type}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Slangen van dit aanbouwdeel */}
+                      {attachment.hydraulic_hoses && attachment.hydraulic_hoses.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium text-gray-700 mb-2">Slangen:</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {attachment.hydraulic_hoses.map((hose) => {
+                              const hasConnection = hydraulicInputs.some(input => input.kleur === hose.kleur);
+                              return (
+                                <div key={hose.id} className={`flex items-center gap-2 p-2 rounded border ${
+                                  hasConnection ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                                }`}>
+                                  {getKleurDisplay(hose.kleur, 'w-6 h-6')}
+                                  <div className="text-xs">
+                                    <p className="font-medium">Slang {hose.volgorde}</p>
+                                    <p className="text-gray-500 capitalize">{hose.kleur}</p>
+                                  </div>
+                                  {hasConnection && (
+                                    <div className="ml-auto">
+                                      <div className="w-2 h-2 bg-green-500 rounded-full" title="Verbonden"></div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400">Geen slangen geconfigureerd</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Legenda */}
+        <div className="mt-8">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Kleur Legenda</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4">
+                {KLEUREN.map((kleur) => (
+                  <div key={kleur.value} className="flex items-center gap-2">
+                    {getKleurDisplay(kleur.value, 'w-6 h-6')}
+                    <span className="text-sm capitalize">{kleur.label}</span>
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Attachments Side */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Cable className="w-5 h-5 text-green-600" />
-                Beschikbare Aanbouwdelen
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {attachments.map((attachment) => (
-                  <div key={attachment.id} className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-medium">{attachment.naam}</p>
-                        <p className="text-sm text-gray-600">{attachment.type}</p>
-                        <p className="text-xs text-gray-500">{attachment.beschrijving}</p>
-                      </div>
-                      {attachment.afbeelding && (
-                        <div className="w-16 h-16 bg-white rounded border">
-                          <img 
-                            src={`/images/${attachment.afbeelding}`}
-                            alt={attachment.naam}
-                            className="w-full h-full object-contain p-1"
-                          />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      Verbindingen: {connections.filter(c => c.attachment_id === attachment.id).length}
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  💡 <strong>Tip:</strong> Slangen worden automatisch verbonden met machine inputs op basis van kleurcodering. 
+                  Zorg ervoor dat de slangkleuren overeenkomen met de machine input kleuren voor een correcte verbinding.
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
-
-        {/* Connection Details */}
-        {isEditing && selectedConnection && (
-          <Card className="mb-8 bg-yellow-50 border-yellow-200">
-            <CardHeader>
-              <CardTitle className="text-yellow-800">
-                Slangverbinding Configureren
-              </CardTitle>
-              <DialogDescription>
-                Configureer de hydraulische verbinding tussen de machine en het aanbouwdeel.
-              </DialogDescription>
-            </CardHeader>
-            <CardContent>
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="basic">Basis Configuratie</TabsTrigger>
-                  <TabsTrigger value="hydraulic">Hydraulische Specs</TabsTrigger>
-                  <TabsTrigger value="instructions">Instructies</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="basic" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="slang_nummer">Slang Nummer</Label>
-                      <Input
-                        id="slang_nummer"
-                        type="number"
-                        value={selectedConnection.slang_nummer}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          slang_nummer: parseInt(e.target.value) || 1
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="slang_kleur">Slang Kleur</Label>
-                      <Select 
-                        value={selectedConnection.slang_kleur} 
-                        onValueChange={(value) => setSelectedConnection({
-                          ...selectedConnection,
-                          slang_kleur: value
-                        })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SLANG_KLEUREN.map((kleur) => (
-                            <SelectItem key={kleur.value} value={kleur.value}>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-4 h-4 rounded-full ${kleur.color}`}></div>
-                                {kleur.label}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="slang_label">Slang Label</Label>
-                      <Input
-                        id="slang_label"
-                        value={selectedConnection.slang_label}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          slang_label: e.target.value
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="volgorde">Volgorde</Label>
-                      <Input
-                        id="volgorde"
-                        type="number"
-                        value={selectedConnection.volgorde}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          volgorde: parseInt(e.target.value) || 1
-                        })}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label htmlFor="functie_beschrijving">Functie Beschrijving</Label>
-                      <Textarea
-                        id="functie_beschrijving"
-                        value={selectedConnection.functie_beschrijving}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          functie_beschrijving: e.target.value
-                        })}
-                      />
-                    </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="hydraulic" className="space-y-4">
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Automatische Aanbevelingen</AlertTitle>
-                    <AlertDescription>
-                      Deze waarden zijn automatisch ingesteld op basis van het aanbouwdeel type. Wijzig alleen indien nodig.
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="connection_type">Aansluiting Type</Label>
-                      <Select 
-                        value={selectedConnection.connection_type || 'double_acting'} 
-                        onValueChange={(value) => {
-                          const { pressure, flow } = getFlowPressureRecommendation(value);
-                          setSelectedConnection({
-                            ...selectedConnection,
-                            connection_type: value as 'single_acting' | 'double_acting' | 'high_flow' | 'low_flow',
-                            pressure_rating: pressure,
-                            flow_rating: flow,
-                            instructie_tekst: getConnectionInstructions(value)
-                          });
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(HYDRAULIC_DOCUMENTATION.connection_types).map(([key, type]) => (
-                            <SelectItem key={key} value={key}>
-                              <div className="space-y-1">
-                                <div className="font-medium">{type.name}</div>
-                                <div className="text-xs text-gray-500">{type.description}</div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="pressure_rating">Druk Rating (bar)</Label>
-                      <Input
-                        id="pressure_rating"
-                        type="number"
-                        value={selectedConnection.pressure_rating || 250}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          pressure_rating: parseInt(e.target.value) || 250
-                        })}
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="flow_rating">Flow Rating (l/min)</Label>
-                      <Input
-                        id="flow_rating"
-                        type="number"
-                        value={selectedConnection.flow_rating || 60}
-                        onChange={(e) => setSelectedConnection({
-                          ...selectedConnection,
-                          flow_rating: parseInt(e.target.value) || 60
-                        })}
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label>Aanbevolen Specificaties</Label>
-                      <div className="p-3 bg-blue-50 rounded text-sm">
-                        {selectedConnection.connection_type && (
-                          <div>
-                            <p><strong>Type:</strong> {HYDRAULIC_DOCUMENTATION.connection_types[selectedConnection.connection_type as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.name}</p>
-                            <p><strong>Druk:</strong> {HYDRAULIC_DOCUMENTATION.connection_types[selectedConnection.connection_type as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.pressure}</p>
-                            <p><strong>Flow:</strong> {HYDRAULIC_DOCUMENTATION.connection_types[selectedConnection.connection_type as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.flow}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {selectedConnection.connection_type && (
-                    <Alert className="border-yellow-200 bg-yellow-50">
-                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                      <AlertTitle className="text-yellow-800">Veiligheidsinstructie</AlertTitle>
-                      <AlertDescription className="text-yellow-700">
-                        {HYDRAULIC_DOCUMENTATION.connection_types[selectedConnection.connection_type as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.safety_notes}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="instructions" className="space-y-4">
-                  <div>
-                    <Label htmlFor="instructie_tekst">Instructie Tekst</Label>
-                    <Textarea
-                      id="instructie_tekst"
-                      value={selectedConnection.instructie_tekst || ''}
-                      onChange={(e) => setSelectedConnection({
-                        ...selectedConnection,
-                        instructie_tekst: e.target.value
-                      })}
-                      placeholder="Speciale instructies voor deze slangverbinding..."
-                      rows={8}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label>Automatische instructies</Label>
-                    <div className="p-3 bg-gray-50 rounded text-sm">
-                      <p className="mb-2">Klik op een van de onderstaande opties om automatische instructies toe te voegen:</p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelectedConnection({
-                            ...selectedConnection,
-                            instructie_tekst: (selectedConnection.instructie_tekst || '') + '\n\nVeiligheidsprocedure:\n' + HYDRAULIC_DOCUMENTATION.safety_procedures.before_connection.map((step, i) => `${i + 1}. ${step}`).join('\n')
-                          })}
-                        >
-                          + Veiligheidsstappen
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelectedConnection({
-                            ...selectedConnection,
-                            instructie_tekst: (selectedConnection.instructie_tekst || '') + '\n\nAansluitingsprocedure:\n' + HYDRAULIC_DOCUMENTATION.safety_procedures.during_connection.map((step, i) => `${i + 1}. ${step}`).join('\n')
-                          })}
-                        >
-                          + Aansluiting stappen
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelectedConnection({
-                            ...selectedConnection,
-                            instructie_tekst: (selectedConnection.instructie_tekst || '') + '\n\nTest procedure:\n' + HYDRAULIC_DOCUMENTATION.safety_procedures.after_connection.map((step, i) => `${i + 1}. ${step}`).join('\n')
-                          })}
-                        >
-                          + Test stappen
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedConnection(null);
-                    setIsEditing(false);
-                  }}
-                >
-                  Annuleren
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (selectedConnection.id) {
-                      handleUpdateConnection(selectedConnection);
-                    } else {
-                      handleSaveConnection();
-                    }
-                  }}
-                >
-                  Opslaan
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Existing Connections */}
-        {connections.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                Geconfigureerde Slangverbindingen
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {connections.map((connection) => {
-                  const input = hydraulicInputs.find(i => i.id === connection.hydraulic_input_id);
-                  const attachment = attachments.find(a => a.id === connection.attachment_id);
-                  
-                  return (
-                    <div key={connection.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
-                      <div className="flex items-center gap-4">
-                        {getKleurDisplay(connection.slang_kleur)}
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{connection.slang_label}</p>
-                            {connection.connection_type && (
-                              <Badge variant="secondary">
-                                {HYDRAULIC_DOCUMENTATION.connection_types[connection.connection_type as keyof typeof HYDRAULIC_DOCUMENTATION.connection_types]?.name}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600">
-                            {input?.input_label} → {attachment?.naam}
-                          </p>
-                          <p className="text-xs text-gray-500">{connection.functie_beschrijving}</p>
-                          {(connection.pressure_rating || connection.flow_rating) && (
-                            <div className="flex gap-4 text-xs text-gray-500 mt-1">
-                              {connection.pressure_rating && <span>Druk: {connection.pressure_rating} bar</span>}
-                              {connection.flow_rating && <span>Flow: {connection.flow_rating} l/min</span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedConnection(connection);
-                                setIsEditing(true);
-                              }}
-                            >
-                              Bewerken
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Bewerk slangverbinding configuratie</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => connection.id && handleDeleteConnection(connection.id)}
-                            >
-                              Verwijderen
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Verwijder deze slangverbinding</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Empty State */}
-        {connections.length === 0 && !isEditing && (
-          <Card>
-            <CardContent className="text-center py-12">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">Geen slangverbindingen geconfigureerd</p>
-              <p className="text-sm text-gray-400 mt-2">
-                Klik op &quot;Verbind&quot; bij een hydraulische input om te beginnen.
-              </p>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
-    </TooltipProvider>
   );
 } 

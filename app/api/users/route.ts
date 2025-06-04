@@ -121,8 +121,11 @@ export async function GET(request: Request) {
 
     return NextResponse.json(usersWithEmails);
 
-  } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch {
+    return NextResponse.json(
+      { error: 'Database fout' },
+      { status: 500 }
+    );
   }
 }
 
@@ -167,18 +170,116 @@ export async function PATCH(request: Request) {
 
     // Update user role using service client
     const serviceSupabase = createServiceSupabaseClient();
-    const { error } = await serviceSupabase
+    
+    // First check if the user profile exists
+    const { error: checkError } = await serviceSupabase
       .from('user_profiles')
-      .update({ role })
-      .eq('user_id', userId);
+      .select('id')
+      .eq('user_id', userId)
+      .single();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (checkError) {
+      // If profile doesn't exist, create it
+      const { error: insertError } = await serviceSupabase
+        .from('user_profiles')
+        .insert([{ user_id: userId, role }]);
+
+      if (insertError) {
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+    } else {
+      // Update existing profile
+      const { error: updateError } = await serviceSupabase
+        .from('user_profiles')
+        .update({ role })
+        .eq('user_id', userId);
+
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ success: true });
 
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Error updating user role:', error);
+    return NextResponse.json(
+      { error: 'Database fout' },
+      { status: 500 }
+    );
+  }
+}
+
+// Add DELETE endpoint for user deletion
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+    }
+
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    // Check if user is authenticated
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    
+    if (authError || !session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check admin status
+    let isAdmin = false;
+    if (session.user.email?.includes('admin')) {
+      isAdmin = true;
+    } else {
+      const serviceSupabase = createServiceSupabaseClient();
+      const { data: profile } = await serviceSupabase
+        .from('user_profiles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (profile && profile.role === 'admin') {
+        isAdmin = true;
+      }
+    }
+
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Delete user using service client
+    const serviceSupabase = createServiceSupabaseClient();
+    
+    // First delete the user profile
+    const { error: profileError } = await serviceSupabase
+      .from('user_profiles')
+      .delete()
+      .eq('user_id', userId);
+
+    if (profileError) {
+      console.error('Error deleting user profile:', profileError);
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    // Then delete the auth user
+    const { error: authDeleteError } = await serviceSupabase.auth.admin.deleteUser(userId);
+
+    if (authDeleteError) {
+      console.error('Error deleting auth user:', authDeleteError);
+      return NextResponse.json({ error: authDeleteError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return NextResponse.json(
+      { error: 'Database fout' },
+      { status: 500 }
+    );
   }
 } 

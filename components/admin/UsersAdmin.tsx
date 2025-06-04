@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Shield, User } from 'lucide-react';
+import { ArrowLeft, Shield, User, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 interface UserProfile {
   id: string;
@@ -21,15 +22,12 @@ interface UserProfile {
 export default function UsersAdmin() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [openDialogUserId, setOpenDialogUserId] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    checkAdminAndFetchUsers();
-  }, []);
-
-  const checkAdminAndFetchUsers = async () => {
+  const checkAdminAndFetchUsers = useCallback(async () => {
     try {
       // Check for URL verification parameters first
       const verified = searchParams.get('verified');
@@ -108,18 +106,22 @@ export default function UsersAdmin() {
       }
 
       setUsers(data);
-    } catch (error) {
+    } catch {
       toast.error('Er is een fout opgetreden');
     } finally {
       setLoading(false);
     }
-  };
+  }, [router, searchParams, supabase]);
+
+  useEffect(() => {
+    checkAdminAndFetchUsers();
+  }, [checkAdminAndFetchUsers]);
 
   const updateUserRole = async (userId: string, newRole: 'user' | 'admin') => {
     try {
       const response = await fetch('/api/users', {
         method: 'PATCH',
-        credentials: 'include', // Important: This ensures cookies are sent with the request
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
@@ -137,8 +139,34 @@ export default function UsersAdmin() {
 
       toast.success(`Gebruikersrol succesvol bijgewerkt naar ${newRole}`);
       checkAdminAndFetchUsers(); // Refresh data
-    } catch (error) {
+    } catch {
       toast.error('Er is een fout opgetreden bij het bijwerken van de rol');
+    }
+  };
+
+  const deleteUser = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/users?userId=${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error('Fout bij verwijderen gebruiker: ' + (data.error || 'Unknown error'));
+        return;
+      }
+
+      toast.success('Gebruiker succesvol verwijderd');
+      checkAdminAndFetchUsers(); // Refresh data
+    } catch {
+      toast.error('Er is een fout opgetreden bij het verwijderen van de gebruiker');
     }
   };
 
@@ -160,7 +188,6 @@ export default function UsersAdmin() {
           <Button
             variant="outline"
             onClick={() => {
-              // Preserve admin verification parameters
               const verified = searchParams.get('verified') || 'true';
               const email = searchParams.get('email') || 'admin@example.com';
               router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
@@ -218,6 +245,45 @@ export default function UsersAdmin() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <Dialog open={openDialogUserId === user.user_id} onOpenChange={open => setOpenDialogUserId(open ? user.user_id : null)}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="destructive" 
+                      size="sm"
+                      className="w-full flex items-center justify-center gap-1 px-2 py-1 text-xs"
+                      onClick={() => setOpenDialogUserId(user.user_id)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Verwijderen
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Gebruiker Verwijderen</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-gray-600">
+                        Weet je zeker dat je de gebruiker <strong>{user.email}</strong> wilt verwijderen?
+                        Deze actie kan niet ongedaan worden gemaakt.
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setOpenDialogUserId(null)}>
+                          Annuleren
+                        </Button>
+                        <Button 
+                          variant="destructive"
+                          onClick={async () => {
+                            await deleteUser(user.user_id);
+                            setOpenDialogUserId(null);
+                          }}
+                        >
+                          Verwijderen
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </CardContent>
             </Card>
           ))}

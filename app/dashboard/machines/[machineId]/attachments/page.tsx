@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AttachmentList from '@/components/dashboard/AttachmentList';
 import type { Attachment } from '@/components/dashboard/AttachmentList';
@@ -58,20 +58,7 @@ export default function AttachmentsPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
 
-  useEffect(() => {
-    if (!machineId) return;
-    fetchMachineAndAttachments();
-  }, [machineId]);
-
-  // Auto-select first available input when inputs are loaded
-  useEffect(() => {
-    if (hydraulicInputs.length > 0 && !selectedInput) {
-      const firstInput = hydraulicInputs[0];
-      setSelectedInput(firstInput);
-    }
-  }, [hydraulicInputs, selectedInput]);
-
-  const fetchMachineAndAttachments = async () => {
+  const fetchMachineAndAttachments = useCallback(async () => {
     try {
       // Fetch machine info
       const { data: machineData, error: machineError } = await supabase
@@ -116,7 +103,19 @@ export default function AttachmentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [machineId, supabase, router]);
+
+  useEffect(() => {
+    fetchMachineAndAttachments();
+  }, [fetchMachineAndAttachments]);
+
+  // Auto-select first available input when inputs are loaded
+  useEffect(() => {
+    if (hydraulicInputs.length > 0 && !selectedInput) {
+      const firstInput = hydraulicInputs[0];
+      setSelectedInput(firstInput);
+    }
+  }, [hydraulicInputs, selectedInput]);
 
   const getKleurDisplay = (kleur: string) => {
     const kleurInfo = HYDRAULIC_KLEUREN.find(k => k.value === kleur);
@@ -202,13 +201,6 @@ export default function AttachmentsPage() {
           onClick={() => router.push('/dashboard')}
         >
           <ArrowLeft className="w-4 h-4" /> Terug naar dashboard
-        </Button>
-        <Button
-          variant="outline"
-          className="flex items-center gap-2"
-          onClick={() => router.push(`/dashboard/machines/${machineId}/ventielen`)}
-        >
-          <Settings className="w-4 h-4" /> Ventielen Overzicht
         </Button>
         {selectedAttachments.length > 0 && (
           <Button

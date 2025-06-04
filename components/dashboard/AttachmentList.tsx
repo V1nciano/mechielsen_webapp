@@ -84,13 +84,16 @@ const AttachmentList: React.FC<AttachmentListProps> = ({
           >
             {attachment.afbeelding && (
               <Image
-                src={`/images/${attachment.afbeelding}`}
+                src={attachment.afbeelding}
                 alt={attachment.naam}
                 width={400}
                 height={160}
                 className="w-full h-40 object-contain mb-4 rounded"
                 style={{ objectFit: 'contain' }}
                 priority
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             )}
             <div className="font-semibold text-lg text-center mb-1">{attachment.naam}</div>

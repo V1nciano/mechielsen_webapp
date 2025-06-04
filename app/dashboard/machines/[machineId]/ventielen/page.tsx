@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,20 @@ interface Machine {
   layout_beschrijving?: string;
 }
 
+interface VentielData {
+  id: string;
+  ventiel_nummer: string;
+  functie_naam: string;
+  positie: 'voor' | 'achter';
+  ventiel_type: 'enkel' | 'dubbelwerkend' | 'powerBeyond';
+  omschrijving?: string;
+  kleur_code?: string;
+  poort_a_label: string;
+  poort_b_label: string;
+  volgorde: number;
+  actief: boolean;
+}
+
 interface Ventiel {
   id: string;
   ventiel_nummer: string;
@@ -31,14 +45,14 @@ interface Ventiel {
 }
 
 const KLEUREN = [
-  { value: 'rood', label: 'Rood', color: 'bg-red-500' },
-  { value: 'geel', label: 'Geel', color: 'bg-yellow-500' },
   { value: 'blauw', label: 'Blauw', color: 'bg-blue-500' },
+  { value: 'rood', label: 'Rood', color: 'bg-red-500' },
+  { value: 'geel', label: 'Geel', color: 'bg-yellow-400' },
   { value: 'groen', label: 'Groen', color: 'bg-green-500' },
-  { value: 'oranje', label: 'Oranje', color: 'bg-orange-500' },
-  { value: 'paars', label: 'Paars', color: 'bg-purple-500' },
   { value: 'zwart', label: 'Zwart', color: 'bg-black' },
-  { value: 'wit', label: 'Wit', color: 'bg-white border' }
+  { value: 'wit', label: 'Wit', color: 'bg-white border border-gray-300' },
+  { value: 'oranje', label: 'Oranje', color: 'bg-orange-500' },
+  { value: 'paars', label: 'Paars', color: 'bg-purple-500' }
 ];
 
 function VentielenViewPageContent() {
@@ -53,11 +67,7 @@ function VentielenViewPageContent() {
   const supabase = createClientComponentClient();
   const machineId = params.machineId as string;
 
-  useEffect(() => {
-    fetchData();
-  }, [machineId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // Check authentication
       const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -85,12 +95,12 @@ function VentielenViewPageContent() {
       // Fetch ventielen for this machine via API
       const ventielenResponse = await fetch(`/api/machine-ventielen?machineId=${machineId}`);
       if (ventielenResponse.ok) {
-        const ventielenData = await ventielenResponse.json();
+        const ventielenData: VentielData[] = await ventielenResponse.json();
         // Filter for active ventielen only
-        const allVentielen = (ventielenData || []).filter((v: any) => v.actief);
+        const allVentielen = (ventielenData || []).filter((v) => v.actief);
         setVentielen(allVentielen);
-        setVentielenVoor(allVentielen.filter((v: any) => v.positie === 'voor'));
-        setVentielenAchter(allVentielen.filter((v: any) => v.positie === 'achter'));
+        setVentielenVoor(allVentielen.filter((v) => v.positie === 'voor'));
+        setVentielenAchter(allVentielen.filter((v) => v.positie === 'achter'));
       } else {
         console.error('Error fetching ventielen:', await ventielenResponse.text());
         setVentielen([]);
@@ -102,7 +112,11 @@ function VentielenViewPageContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [machineId, router, supabase.auth]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const getKleurBadge = (kleurCode?: string) => {
     const kleur = KLEUREN.find(k => k.value === kleurCode);
