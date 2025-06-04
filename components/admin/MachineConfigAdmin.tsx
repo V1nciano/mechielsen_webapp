@@ -382,10 +382,10 @@ export default function MachineConfigAdmin() {
   }
 
   return (
-    <div className="min-h-screen p-8 bg-gray-50">
+    <div className="min-h-screen p-4 sm:p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             <Button
               variant="outline"
               onClick={() => {
@@ -393,30 +393,32 @@ export default function MachineConfigAdmin() {
                 const email = searchParams.get('email') || 'admin@example.com';
                 router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 w-fit touch-btn"
             >
               <ArrowLeft className="w-4 h-4" />
               Terug
             </Button>
-            <h1 className="text-3xl font-bold text-gray-900">Machine-Aanbouwdeel Configuratie</h1>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Machine-Aanbouwdeel Configuratie</h1>
+            </div>
           </div>
           
           <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="flex items-center gap-2">
+              <Button className="flex items-center gap-2 w-full sm:w-auto touch-btn">
                 <Link className="w-4 h-4" />
-                Nieuwe Verbinding
+                <span className="sm:inline">Nieuwe Verbinding</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="w-[95vw] sm:max-w-2xl mobile-scroll">
               <DialogHeader>
-                <DialogTitle>Machine en Aanbouwdeel Verbinden</DialogTitle>
+                <DialogTitle className="text-lg sm:text-xl">Machine en Aanbouwdeel Verbinden</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-4">
                 <div>
-                  <Label>Selecteer Machine</Label>
+                  <Label className="text-sm sm:text-base">Selecteer Machine</Label>
                   <Select value={selectedMachine || ''} onValueChange={setSelectedMachine}>
-                    <SelectTrigger>
+                    <SelectTrigger className="text-base">
                       <SelectValue placeholder="Kies een machine..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -431,8 +433,8 @@ export default function MachineConfigAdmin() {
                 
                 {selectedMachine && (
                   <div>
-                    <Label>Selecteer Aanbouwdeel</Label>
-                    <div className="grid grid-cols-1 gap-2 mt-2 max-h-60 overflow-y-auto">
+                    <Label className="text-sm sm:text-base">Selecteer Aanbouwdeel</Label>
+                    <div className="grid grid-cols-1 gap-3 mt-2 max-h-60 overflow-y-auto mobile-scroll">
                       {attachments.map((attachment) => {
                         const isConnected = connections.some(
                           c => c.machine_id === selectedMachine && c.attachment_id === attachment.id
@@ -441,7 +443,7 @@ export default function MachineConfigAdmin() {
                         return (
                           <div 
                             key={attachment.id} 
-                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors tap-target ${
                               isConnected 
                                 ? 'bg-gray-100 border-gray-300 cursor-not-allowed' 
                                 : 'hover:bg-gray-50 border-gray-200'
@@ -454,14 +456,14 @@ export default function MachineConfigAdmin() {
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-medium">{attachment.naam}</p>
-                                <p className="text-sm text-gray-600">{attachment.type}</p>
+                                <p className="font-medium text-sm sm:text-base">{attachment.naam}</p>
+                                <p className="text-xs sm:text-sm text-gray-600">{attachment.type}</p>
                                 <p className="text-xs text-gray-500">
                                   {attachment.aantal_slangen || 2} slangen
                                 </p>
                               </div>
                               {isConnected && (
-                                <Badge variant="secondary">Al verbonden</Badge>
+                                <Badge variant="secondary" className="text-xs">Al verbonden</Badge>
                               )}
                             </div>
                           </div>
@@ -476,27 +478,28 @@ export default function MachineConfigAdmin() {
         </div>
 
         {/* Existing Connections */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {connections.map((connection) => (
             <Card key={connection.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="text-lg">
+              <CardHeader className="pb-3 sm:pb-4">
+                <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
+                  <span className="text-base sm:text-lg line-clamp-2">
                     {connection.machine?.naam} ↔ {connection.attachment?.naam}
                   </span>
                   <Button 
                     size="sm" 
                     variant="destructive"
                     onClick={() => disconnectMachineFromAttachment(connection.id)}
+                    className="tap-target"
                   >
                     <Unlink className="w-4 h-4" />
                   </Button>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-6">
                 <div>
-                  <Label>Machine Details</Label>
-                  <div className="text-sm text-gray-600">
+                  <Label className="text-xs sm:text-sm">Machine Details</Label>
+                  <div className="text-xs sm:text-sm text-gray-600">
                     <p>{connection.machine?.type}</p>
                     {connection.machine?.kenteken && (
                       <p>Kenteken: {connection.machine.kenteken}</p>
@@ -505,8 +508,8 @@ export default function MachineConfigAdmin() {
                 </div>
 
                 <div>
-                  <Label>Aanbouwdeel Details</Label>
-                  <div className="text-sm text-gray-600">
+                  <Label className="text-xs sm:text-sm">Aanbouwdeel Details</Label>
+                  <div className="text-xs sm:text-sm text-gray-600">
                     <p>{connection.attachment?.type}</p>
                     <p>{connection.attachment?.aantal_slangen || 2} slangen</p>
                   </div>
@@ -514,13 +517,26 @@ export default function MachineConfigAdmin() {
 
                 {/* Machine Hydraulic Inputs */}
                 <div>
-                  <Label>Machine Inputs</Label>
-                  <div className="flex flex-wrap gap-2 mt-1">
+                  <Label className="text-xs sm:text-sm">Machine Inputs</Label>
+                  <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
                     {(() => {
                       const machine = machines.find(m => m.id === connection.machine_id);
                       return machine?.machine_hydraulic_inputs?.map((input) => (
                         <div key={input.id} className="flex items-center gap-1">
-                          {getKleurDisplay(input.kleur)}
+                          <div className="flex items-center gap-1">
+                            <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${
+                              HYDRAULIC_KLEUREN.find(k => k.value === input.kleur)?.color
+                            } flex items-center justify-center`}>
+                              <span className={`text-xs font-bold ${
+                                HYDRAULIC_KLEUREN.find(k => k.value === input.kleur)?.textColor
+                              }`}>
+                                {input.kleur === 'rood' ? 'R' : input.kleur === 'blauw' ? 'B' : 
+                                 input.kleur === 'geel' ? 'G' : input.kleur === 'groen' ? 'GR' : 
+                                 input.kleur === 'zwart' ? 'Z' : input.kleur === 'wit' ? 'W' :
+                                 input.kleur === 'oranje' ? 'O' : 'P'}
+                              </span>
+                            </div>
+                          </div>
                           <span className="text-xs">#{input.volgorde}</span>
                         </div>
                       )) || [];
@@ -530,13 +546,26 @@ export default function MachineConfigAdmin() {
 
                 {/* Attachment Hydraulic Hoses */}
                 <div>
-                  <Label>Aanbouwdeel Slangen</Label>
-                  <div className="flex flex-wrap gap-2 mt-1">
+                  <Label className="text-xs sm:text-sm">Aanbouwdeel Slangen</Label>
+                  <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
                     {(() => {
                       const attachment = attachments.find(a => a.id === connection.attachment_id);
                       return attachment?.attachment_hydraulic_hoses?.map((hose) => (
                         <div key={hose.id} className="flex items-center gap-1">
-                          {getKleurDisplay(hose.kleur)}
+                          <div className="flex items-center gap-1">
+                            <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${
+                              HYDRAULIC_KLEUREN.find(k => k.value === hose.kleur)?.color
+                            } flex items-center justify-center`}>
+                              <span className={`text-xs font-bold ${
+                                HYDRAULIC_KLEUREN.find(k => k.value === hose.kleur)?.textColor
+                              }`}>
+                                {hose.kleur === 'rood' ? 'R' : hose.kleur === 'blauw' ? 'B' : 
+                                 hose.kleur === 'geel' ? 'G' : hose.kleur === 'groen' ? 'GR' : 
+                                 hose.kleur === 'zwart' ? 'Z' : hose.kleur === 'wit' ? 'W' :
+                                 hose.kleur === 'oranje' ? 'O' : 'P'}
+                              </span>
+                            </div>
+                          </div>
                           <span className="text-xs">#{hose.volgorde}</span>
                         </div>
                       )) || [];
@@ -552,10 +581,10 @@ export default function MachineConfigAdmin() {
                       setSelectedConnection(connection);
                       setHydraulicDialogOpen(true);
                     }}
-                    className="w-full flex items-center gap-2"
+                    className="w-full flex items-center gap-2 touch-btn"
                   >
                     <Settings className="w-4 h-4" />
-                    Configureer Hydrauliek
+                    <span className="text-xs sm:text-sm">Configureer Hydrauliek</span>
                   </Button>
                 </div>
               </CardContent>
@@ -564,222 +593,207 @@ export default function MachineConfigAdmin() {
         </div>
 
         {connections.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Nog geen machine-aanbouwdeel verbindingen.</p>
-            <p className="text-sm text-gray-400 mt-2">Voeg de eerste verbinding toe om te beginnen.</p>
+          <div className="text-center py-8 sm:py-12">
+            <p className="text-gray-500 text-sm sm:text-base">Nog geen machine-aanbouwdeel verbindingen.</p>
+            <p className="text-xs sm:text-sm text-gray-400 mt-2">Voeg de eerste verbinding toe om te beginnen.</p>
           </div>
         )}
 
         {/* Hydraulic Configuration Dialog */}
         {selectedConnection && (
-          <Dialog open={hydraulicDialogOpen} onOpenChange={(open) => {
-            setHydraulicDialogOpen(open);
-            if (!open) {
-              setSelectedInput(null);
-              setSelectedHose(null);
-              setIsConnecting(false);
-            }
-          }}>
-            <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
-              <DialogHeader className="pb-6">
-                <DialogTitle className="text-2xl">
+          <Dialog open={hydraulicDialogOpen} onOpenChange={setHydraulicDialogOpen}>
+            <DialogContent className="w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto mobile-scroll">
+              <DialogHeader>
+                <DialogTitle className="text-lg sm:text-xl">
                   Hydraulische Configuratie: {selectedConnection.machine?.naam} ↔ {selectedConnection.attachment?.naam}
                 </DialogTitle>
-                <p className="text-base text-gray-600 mt-2">
-                  {isConnecting 
-                    ? `Klik op een ${selectedInput ? 'aanbouwdeel slang' : 'machine input'} om een verbinding te maken`
-                    : 'Klik op een machine input om te beginnen met verbinden'
-                  }
-                </p>
               </DialogHeader>
               
-              <div className="relative">
-                <div className="grid grid-cols-2 gap-12 mt-6">
-                  {/* Machine Inputs */}
-                  <div>
-                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-3">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                      Machine Inputs
-                    </h3>
-                    <div className="space-y-4">
-                      {(() => {
-                        const machine = machines.find(m => m.id === selectedConnection.machine_id);
-                        return machine?.machine_hydraulic_inputs?.map((input) => {
-                          const connection = getConnectionForInput(input.id);
-                          const isSelected = selectedInput?.id === input.id;
-                          const isConnected = !!connection;
-                          
-                          return (
-                            <div 
-                              key={input.id} 
-                              className={`p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md ${
-                                isSelected 
-                                  ? 'border-blue-500 bg-blue-50 shadow-lg' 
-                                  : isConnected
-                                  ? 'border-green-500 bg-green-50'
-                                  : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
-                              }`}
-                              onClick={() => handleInputClick(input)}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  {getKleurDisplay(input.kleur)}
-                                  <div>
-                                    <p className="font-semibold text-lg">Input #{input.volgorde}</p>
-                                    {isConnected && (
-                                      <p className="text-sm text-green-600 font-medium">✓ Verbonden</p>
-                                    )}
-                                    {isSelected && (
-                                      <p className="text-sm text-blue-600 font-medium">Geselecteerd</p>
-                                    )}
-                                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mt-4">
+                {/* Machine Inputs */}
+                <div>
+                  <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-3">
+                    <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                    Machine Inputs
+                  </h3>
+                  <div className="space-y-3 sm:space-y-4">
+                    {(() => {
+                      const machine = machines.find(m => m.id === selectedConnection.machine_id);
+                      return machine?.machine_hydraulic_inputs?.map((input) => {
+                        const connection = getConnectionForInput(input.id);
+                        const isSelected = selectedInput?.id === input.id;
+                        const isConnected = !!connection;
+                        
+                        return (
+                          <div 
+                            key={input.id} 
+                            className={`p-3 sm:p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md tap-target ${
+                              isSelected 
+                                ? 'border-blue-500 bg-blue-50 shadow-lg' 
+                                : isConnected
+                                ? 'border-green-500 bg-green-50'
+                                : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
+                            }`}
+                            onClick={() => handleInputClick(input)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 sm:gap-4">
+                                {getKleurDisplay(input.kleur)}
+                                <div>
+                                  <p className="font-semibold text-sm sm:text-lg">Input #{input.volgorde}</p>
+                                  {isConnected && (
+                                    <p className="text-xs sm:text-sm text-green-600 font-medium">✓ Verbonden</p>
+                                  )}
+                                  {isSelected && (
+                                    <p className="text-xs sm:text-sm text-blue-600 font-medium">Geselecteerd</p>
+                                  )}
                                 </div>
-                                {isConnected && (
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (connection) {
-                                        deleteHydraulicConnection(connection.id);
-                                      }
-                                    }}
-                                    className="opacity-70 hover:opacity-100"
-                                  >
-                                    ✕
-                                  </Button>
-                                )}
                               </div>
+                              {isConnected && (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (connection) {
+                                      deleteHydraulicConnection(connection.id);
+                                    }
+                                  }}
+                                  className="opacity-70 hover:opacity-100 tap-target"
+                                >
+                                  ✕
+                                </Button>
+                              )}
                             </div>
-                          );
-                        }) || [];
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Attachment Hoses */}
-                  <div>
-                    <h3 className="text-xl font-semibold mb-6 flex items-center gap-3">
-                      <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
-                      Aanbouwdeel Slangen
-                    </h3>
-                    <div className="space-y-4">
-                      {(() => {
-                        const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
-                        return attachment?.attachment_hydraulic_hoses?.map((hose) => {
-                          const connection = getConnectionForHose(hose.id);
-                          const isSelected = selectedHose?.id === hose.id;
-                          const isConnected = !!connection;
-                          
-                          return (
-                            <div 
-                              key={hose.id} 
-                              className={`p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md ${
-                                isSelected 
-                                  ? 'border-orange-500 bg-orange-50 shadow-lg' 
-                                  : isConnected
-                                  ? 'border-green-500 bg-green-50'
-                                  : isConnecting && selectedInput
-                                  ? 'border-orange-300 bg-orange-50 hover:border-orange-400'
-                                  : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
-                              }`}
-                              onClick={() => handleHoseClick(hose)}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  {getKleurDisplay(hose.kleur)}
-                                  <div>
-                                    <p className="font-semibold text-lg">Slang #{hose.volgorde}</p>
-                                    {isConnected && (
-                                      <p className="text-sm text-green-600 font-medium">✓ Verbonden</p>
-                                    )}
-                                    {isSelected && (
-                                      <p className="text-sm text-orange-600 font-medium">Geselecteerd</p>
-                                    )}
-                                  </div>
-                                </div>
-                                {isConnected && (
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (connection) {
-                                        deleteHydraulicConnection(connection.id);
-                                      }
-                                    }}
-                                    className="opacity-70 hover:opacity-100"
-                                  >
-                                    ✕
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        }) || [];
-                      })()}
-                    </div>
+                          </div>
+                        );
+                      }) || [];
+                    })()}
                   </div>
                 </div>
 
-                {/* Connection Lines Visualization */}
-                <div className="mt-10 p-6 bg-gray-50 border rounded-xl">
-                  <h4 className="font-semibold text-lg text-gray-800 mb-4">Actieve Verbindingen:</h4>
-                  {(() => {
-                    const machine = machines.find(m => m.id === selectedConnection.machine_id);
-                    const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
-                    const relevantConnections = hydraulicConnections.filter(
-                      conn => conn.machine_id === selectedConnection.machine_id && 
-                              conn.attachment_id === selectedConnection.attachment_id
-                    );
-                    
-                    if (relevantConnections.length === 0) {
-                      return (
-                        <p className="text-sm text-gray-500 italic">
-                          Nog geen verbindingen gemaakt. Klik op een machine input om te beginnen.
-                        </p>
-                      );
-                    }
-                    
-                    return (
-                      <div className="space-y-2">
-                        {relevantConnections.map((conn) => {
-                          const input = machine?.machine_hydraulic_inputs?.find(i => i.id === conn.machine_input_id);
-                          const hose = attachment?.attachment_hydraulic_hoses?.find(h => h.id === conn.attachment_hose_id);
-                          
-                          if (!input || !hose) return null;
-                          
-                          return (
-                            <div key={conn.id} className="flex items-center justify-between p-3 bg-white border rounded-lg">
-                              <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                  {getKleurDisplay(input.kleur)}
-                                  <span className="text-sm font-medium">Input #{input.volgorde}</span>
-                                </div>
-                                <div className="text-gray-400">→</div>
-                                <div className="flex items-center gap-2">
-                                  {getKleurDisplay(hose.kleur)}
-                                  <span className="text-sm font-medium">Slang #{hose.volgorde}</span>
+                {/* Attachment Hoses */}
+                <div>
+                  <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-3">
+                    <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
+                    Aanbouwdeel Slangen
+                  </h3>
+                  <div className="space-y-3 sm:space-y-4">
+                    {(() => {
+                      const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
+                      return attachment?.attachment_hydraulic_hoses?.map((hose) => {
+                        const connection = getConnectionForHose(hose.id);
+                        const isSelected = selectedHose?.id === hose.id;
+                        const isConnected = !!connection;
+                        
+                        return (
+                          <div 
+                            key={hose.id} 
+                            className={`p-3 sm:p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md tap-target ${
+                              isSelected 
+                                ? 'border-orange-500 bg-orange-50 shadow-lg' 
+                                : isConnected
+                                ? 'border-green-500 bg-green-50'
+                                : isConnecting && selectedInput
+                                ? 'border-orange-300 bg-orange-50 hover:border-orange-400'
+                                : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
+                            }`}
+                            onClick={() => handleHoseClick(hose)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 sm:gap-4">
+                                {getKleurDisplay(hose.kleur)}
+                                <div>
+                                  <p className="font-semibold text-sm sm:text-lg">Slang #{hose.volgorde}</p>
+                                  {isConnected && (
+                                    <p className="text-xs sm:text-sm text-green-600 font-medium">✓ Verbonden</p>
+                                  )}
+                                  {isSelected && (
+                                    <p className="text-xs sm:text-sm text-orange-600 font-medium">Geselecteerd</p>
+                                  )}
                                 </div>
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => deleteHydraulicConnection(conn.id)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                Verwijder
-                              </Button>
+                              {isConnected && (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (connection) {
+                                      deleteHydraulicConnection(connection.id);
+                                    }
+                                  }}
+                                  className="opacity-70 hover:opacity-100 tap-target"
+                                >
+                                  ✕
+                                </Button>
+                              )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                          </div>
+                        );
+                      }) || [];
+                    })()}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-between gap-2 mt-6">
+              {/* Connection Lines Visualization */}
+              <div className="mt-6 sm:mt-10 p-4 sm:p-6 bg-gray-50 border rounded-xl">
+                <h4 className="font-semibold text-base sm:text-lg text-gray-800 mb-4">Actieve Verbindingen:</h4>
+                {(() => {
+                  const machine = machines.find(m => m.id === selectedConnection.machine_id);
+                  const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
+                  const relevantConnections = hydraulicConnections.filter(
+                    conn => conn.machine_id === selectedConnection.machine_id && 
+                            conn.attachment_id === selectedConnection.attachment_id
+                  );
+                  
+                  if (relevantConnections.length === 0) {
+                    return (
+                      <p className="text-xs sm:text-sm text-gray-500 italic">
+                        Nog geen verbindingen gemaakt. Klik op een machine input om te beginnen.
+                      </p>
+                    );
+                  }
+                  
+                  return (
+                    <div className="space-y-2">
+                      {relevantConnections.map((conn) => {
+                        const input = machine?.machine_hydraulic_inputs?.find(i => i.id === conn.machine_input_id);
+                        const hose = attachment?.attachment_hydraulic_hoses?.find(h => h.id === conn.attachment_hose_id);
+                        
+                        if (!input || !hose) return null;
+                        
+                        return (
+                          <div key={conn.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-white border rounded-lg space-y-3 sm:space-y-0">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                              <div className="flex items-center gap-2">
+                                {getKleurDisplay(input.kleur)}
+                                <span className="text-xs sm:text-sm font-medium">Input #{input.volgorde}</span>
+                              </div>
+                              <div className="text-gray-400 self-center">→</div>
+                              <div className="flex items-center gap-2">
+                                {getKleurDisplay(hose.kleur)}
+                                <span className="text-xs sm:text-sm font-medium">Slang #{hose.volgorde}</span>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => deleteHydraulicConnection(conn.id)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 touch-btn"
+                            >
+                              <span className="text-xs sm:text-sm">Verwijder</span>
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-between gap-2 mt-6">
                 <Button 
                   variant="outline" 
                   onClick={() => {
@@ -788,11 +802,12 @@ export default function MachineConfigAdmin() {
                     setIsConnecting(false);
                   }}
                   disabled={!isConnecting}
+                  className="touch-btn"
                 >
-                  Selectie Wissen
+                  <span className="text-xs sm:text-sm">Selectie Wissen</span>
                 </Button>
-                <Button variant="outline" onClick={() => setHydraulicDialogOpen(false)}>
-                  Sluiten
+                <Button variant="outline" onClick={() => setHydraulicDialogOpen(false)} className="touch-btn">
+                  <span className="text-xs sm:text-sm">Sluiten</span>
                 </Button>
               </div>
             </DialogContent>

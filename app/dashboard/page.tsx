@@ -173,7 +173,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, router]);
+  }, [supabase]);
 
   useEffect(() => {
     fetchData();
@@ -279,42 +279,42 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 p-2 sm:p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8 bg-white rounded-lg p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 bg-white rounded-lg p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-0">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Mechielsen Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Mechielsen Dashboard</h1>
             {user && (
-              <p className="text-gray-600 mt-1">Welkom {user.email}</p>
+              <p className="text-gray-600 mt-1 text-sm sm:text-base">Welkom {user.email}</p>
             )}
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {isAdmin && (
               <Button
                 variant="outline"
                 onClick={() => router.push(`/admin?verified=true&email=${encodeURIComponent(user?.email || '')}`)}
-                className="flex items-center gap-2"
+                className="flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 <Settings className="w-4 h-4" />
-                Admin Panel
+                <span className="sm:inline">Admin Panel</span>
               </Button>
             )}
             <Button
               variant="outline"
               onClick={handleLogout}
-              className="flex items-center gap-2"
+              className="flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               <LogOut className="w-4 h-4" />
-              Uitloggen
+              <span className="sm:inline">Uitloggen</span>
             </Button>
           </div>
         </div>
 
         {/* Compatibility Status */}
         {(selectedMachine || selectedAttachment) && (
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <Card className={`border-2 ${
               compatibility?.compatible 
                 ? 'border-green-300 bg-green-50' 
@@ -322,18 +322,18 @@ export default function DashboardPage() {
                   ? 'border-red-300 bg-red-50'
                   : 'border-yellow-300 bg-yellow-50'
             }`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                  <div className="flex items-start sm:items-center gap-3">
                     {compatibility?.compatible ? (
-                      <CheckCircle className="w-6 h-6 text-green-600" />
+                      <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-1 sm:mt-0" />
                     ) : selectedMachine && selectedAttachment ? (
-                      <XCircle className="w-6 h-6 text-red-600" />
+                      <XCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-1 sm:mt-0" />
                     ) : (
-                      <Link className="w-6 h-6 text-yellow-600" />
+                      <Link className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600 flex-shrink-0 mt-1 sm:mt-0" />
                     )}
-                    <div>
-                      <h3 className="font-semibold">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm sm:text-base leading-tight">
                         {compatibility?.compatible 
                           ? 'Compatibel! Deze combinatie kan worden gebruikt.' 
                           : selectedMachine && selectedAttachment 
@@ -342,7 +342,7 @@ export default function DashboardPage() {
                         }
                       </h3>
                       {compatibility && (
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
                           Machine inputs: {compatibility.machineInputs} | 
                           Attachment hoses: {compatibility.attachmentHoses} | 
                           Druk: {compatibility.pressureMatch ? '✓' : '✗'}
@@ -353,7 +353,7 @@ export default function DashboardPage() {
                   {selectedMachine && selectedAttachment && compatibility?.compatible && (
                     <Button 
                       onClick={() => router.push(`/dashboard/machines/${selectedMachine.id}/visual-config`)}
-                      className="bg-green-600 hover:bg-green-700"
+                      className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
                     >
                       Configureren
                     </Button>
@@ -365,63 +365,63 @@ export default function DashboardPage() {
         )}
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Machines Section */}
           <Card className="h-fit">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="w-5 h-5" />
+            <CardHeader className="pb-3 sm:pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
                   Machines
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowMachineSearch(!showMachineSearch)}
-                    className="flex items-center gap-2"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto touch-btn"
                   >
                     <Search className="w-4 h-4" />
-                    Geen QR code
+                    <span className="text-xs sm:text-sm">Geen QR code</span>
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowMachineScanner(true)}
-                    className="flex items-center gap-2"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto touch-btn"
                   >
                     <QrCode className="w-4 h-4" />
-                    Scan QR
+                    <span className="text-xs sm:text-sm">Scan QR</span>
                   </Button>
                 </div>
               </div>
               
               {showMachineSearch && (
-                <div className="mt-4">
+                <div className="mt-3 sm:mt-4">
                   <Input
                     placeholder="Zoek machines..."
                     value={machineSearchTerm}
                     onChange={(e) => setMachineSearchTerm(e.target.value)}
-                    className="w-full"
+                    className="w-full text-base"
                   />
                 </div>
               )}
             </CardHeader>
             
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {!selectedMachine && !showMachineSearch && (
-                <div className="text-center py-12 text-gray-500">
-                  <QrCode className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Geen machine geselecteerd</h3>
+                <div className="text-center py-8 sm:py-12 text-gray-500">
+                  <QrCode className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-gray-300" />
+                  <h3 className="text-base sm:text-lg font-medium mb-2">Geen machine geselecteerd</h3>
                   <p className="text-sm">Scan een QR code of zoek handmatig</p>
                 </div>
               )}
               
               {selectedMachine && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div className="relative">
                     {selectedMachine.afbeelding && (
-                      <div className="w-full h-48 rounded-lg overflow-hidden bg-gray-100 mb-4">
+                      <div className="w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-gray-100 mb-3 sm:mb-4">
                         <Image
                           src={selectedMachine.afbeelding}
                           alt={selectedMachine.naam}
@@ -431,23 +431,23 @@ export default function DashboardPage() {
                       </div>
                     )}
                     <div className="absolute top-2 right-2">
-                      <Badge variant="secondary">Geselecteerd</Badge>
+                      <Badge variant="secondary" className="text-xs">Geselecteerd</Badge>
                     </div>
                   </div>
                   
                   <div>
-                    <h3 className="text-xl font-bold">{selectedMachine.naam}</h3>
-                    <p className="text-gray-600">{selectedMachine.type}</p>
-                    <p className="text-sm text-gray-500 mt-2">{selectedMachine.beschrijving}</p>
+                    <h3 className="text-lg sm:text-xl font-bold">{selectedMachine.naam}</h3>
+                    <p className="text-gray-600 text-sm sm:text-base">{selectedMachine.type}</p>
+                    <p className="text-sm text-gray-500 mt-2 line-clamp-3">{selectedMachine.beschrijving}</p>
                     
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                    <div className="mt-3 sm:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
                       {selectedMachine.hydraulische_inputs && (
-                        <div>
+                        <div className="bg-gray-50 p-2 rounded">
                           <span className="font-medium">Inputs:</span> {selectedMachine.hydraulische_inputs}
                         </div>
                       )}
                       {selectedMachine.max_druk && (
-                        <div>
+                        <div className="bg-gray-50 p-2 rounded">
                           <span className="font-medium">Max druk:</span> {selectedMachine.max_druk} bar
                         </div>
                       )}
@@ -457,7 +457,7 @@ export default function DashboardPage() {
                   <Button 
                     variant="outline" 
                     onClick={() => setSelectedMachine(null)}
-                    className="w-full"
+                    className="w-full touch-btn"
                   >
                     Andere machine selecteren
                   </Button>
@@ -465,21 +465,21 @@ export default function DashboardPage() {
               )}
               
               {showMachineSearch && (
-                <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                <div className="grid grid-cols-1 gap-3 max-h-80 sm:max-h-96 overflow-y-auto mobile-scroll">
                   {filteredMachines.map((machine) => (
                     <Card
                       key={machine.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300"
+                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300 tap-target"
                       onClick={() => {
                         setSelectedMachine(machine);
                         setShowMachineSearch(false);
                         setMachineSearchTerm('');
                       }}
                     >
-                      <CardContent className="p-4">
+                      <CardContent className="p-3 sm:p-4">
                         <div className="flex items-center gap-3">
                           {machine.afbeelding && (
-                            <div className="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                               <Image
                                 src={machine.afbeelding}
                                 alt={machine.naam}
@@ -489,9 +489,9 @@ export default function DashboardPage() {
                               />
                             </div>
                           )}
-                          <div className="flex-1">
-                            <h4 className="font-medium">{machine.naam}</h4>
-                            <p className="text-sm text-gray-600">{machine.type}</p>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm sm:text-base truncate">{machine.naam}</h4>
+                            <p className="text-xs sm:text-sm text-gray-600 truncate">{machine.type}</p>
                             <p className="text-xs text-gray-500">
                               {machine.hydraulische_inputs} inputs
                             </p>
@@ -507,60 +507,60 @@ export default function DashboardPage() {
 
           {/* Attachments Section */}
           <Card className="h-fit">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="w-5 h-5" />
+            <CardHeader className="pb-3 sm:pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
                   Aanbouwdelen
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowAttachmentSearch(!showAttachmentSearch)}
-                    className="flex items-center gap-2"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto touch-btn"
                   >
                     <Search className="w-4 h-4" />
-                    Geen QR code
+                    <span className="text-xs sm:text-sm">Geen QR code</span>
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowAttachmentScanner(true)}
-                    className="flex items-center gap-2"
+                    className="flex items-center justify-center gap-2 w-full sm:w-auto touch-btn"
                   >
                     <QrCode className="w-4 h-4" />
-                    Scan QR
+                    <span className="text-xs sm:text-sm">Scan QR</span>
                   </Button>
                 </div>
               </div>
               
               {showAttachmentSearch && (
-                <div className="mt-4">
+                <div className="mt-3 sm:mt-4">
                   <Input
                     placeholder="Zoek aanbouwdelen..."
                     value={attachmentSearchTerm}
                     onChange={(e) => setAttachmentSearchTerm(e.target.value)}
-                    className="w-full"
+                    className="w-full text-base"
                   />
                 </div>
               )}
             </CardHeader>
             
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {!selectedAttachment && !showAttachmentSearch && (
-                <div className="text-center py-12 text-gray-500">
-                  <Settings className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-medium mb-2">Geen aanbouwdeel geselecteerd</h3>
+                <div className="text-center py-8 sm:py-12 text-gray-500">
+                  <Settings className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-gray-300" />
+                  <h3 className="text-base sm:text-lg font-medium mb-2">Geen aanbouwdeel geselecteerd</h3>
                   <p className="text-sm">Scan een QR code of zoek handmatig</p>
                 </div>
               )}
               
               {selectedAttachment && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div className="relative">
                     {selectedAttachment.afbeelding && (
-                      <div className="w-full h-48 rounded-lg overflow-hidden bg-gray-100 mb-4">
+                      <div className="w-full h-40 sm:h-48 rounded-lg overflow-hidden bg-gray-100 mb-3 sm:mb-4">
                         <Image
                           src={selectedAttachment.afbeelding}
                           alt={selectedAttachment.naam}
@@ -570,24 +570,24 @@ export default function DashboardPage() {
                       </div>
                     )}
                     <div className="absolute top-2 right-2">
-                      <Badge variant="secondary">Geselecteerd</Badge>
+                      <Badge variant="secondary" className="text-xs">Geselecteerd</Badge>
                     </div>
                   </div>
                   
                   <div>
-                    <h3 className="text-xl font-bold">{selectedAttachment.naam}</h3>
-                    <p className="text-gray-600">{selectedAttachment.type}</p>
-                    <p className="text-sm text-gray-500 mt-2">{selectedAttachment.beschrijving}</p>
+                    <h3 className="text-lg sm:text-xl font-bold">{selectedAttachment.naam}</h3>
+                    <p className="text-gray-600 text-sm sm:text-base">{selectedAttachment.type}</p>
+                    <p className="text-sm text-gray-500 mt-2 line-clamp-3">{selectedAttachment.beschrijving}</p>
                     
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-                      <div>
+                    <div className="mt-3 sm:mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-sm">
+                      <div className="bg-gray-50 p-2 rounded">
                         <span className="font-medium">Gewicht:</span> {selectedAttachment.gewicht} kg
                       </div>
-                      <div>
+                      <div className="bg-gray-50 p-2 rounded">
                         <span className="font-medium">Werkdruk:</span> {selectedAttachment.werkdruk} bar
                       </div>
                       {selectedAttachment.aantal_slangen && (
-                        <div>
+                        <div className="bg-gray-50 p-2 rounded sm:col-span-2">
                           <span className="font-medium">Slangen:</span> {selectedAttachment.aantal_slangen}
                         </div>
                       )}
@@ -597,7 +597,7 @@ export default function DashboardPage() {
                   <Button 
                     variant="outline" 
                     onClick={() => setSelectedAttachment(null)}
-                    className="w-full"
+                    className="w-full touch-btn"
                   >
                     Ander aanbouwdeel selecteren
                   </Button>
@@ -605,21 +605,21 @@ export default function DashboardPage() {
               )}
               
               {showAttachmentSearch && (
-                <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                <div className="grid grid-cols-1 gap-3 max-h-80 sm:max-h-96 overflow-y-auto mobile-scroll">
                   {filteredAttachments.map((attachment) => (
                     <Card
                       key={attachment.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300"
+                      className="cursor-pointer hover:shadow-md transition-shadow border-2 hover:border-blue-300 tap-target"
                       onClick={() => {
                         setSelectedAttachment(attachment);
                         setShowAttachmentSearch(false);
                         setAttachmentSearchTerm('');
                       }}
                     >
-                      <CardContent className="p-4">
+                      <CardContent className="p-3 sm:p-4">
                         <div className="flex items-center gap-3">
                           {attachment.afbeelding && (
-                            <div className="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                               <Image
                                 src={attachment.afbeelding}
                                 alt={attachment.naam}
@@ -629,9 +629,9 @@ export default function DashboardPage() {
                               />
                             </div>
                           )}
-                          <div className="flex-1">
-                            <h4 className="font-medium">{attachment.naam}</h4>
-                            <p className="text-sm text-gray-600">{attachment.type}</p>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm sm:text-base truncate">{attachment.naam}</h4>
+                            <p className="text-xs sm:text-sm text-gray-600 truncate">{attachment.type}</p>
                             <p className="text-xs text-gray-500">
                               {attachment.werkdruk} bar | {attachment.gewicht} kg
                             </p>
