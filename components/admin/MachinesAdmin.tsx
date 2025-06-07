@@ -7,12 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Edit, X, Plus, Trash2, Upload, QrCode } from 'lucide-react';
+import { ArrowLeft, Edit, X, Plus, Trash2, Upload, QrCode, Link } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Search } from 'lucide-react';
 import Image from 'next/image';
 import qrcode from 'qrcode-generator';
 
@@ -36,7 +37,17 @@ interface Machine {
     voor: string[];
   };
   hydraulic_inputs?: HydraulicInput[];
+  attachment_machines?: { attachments: Attachment }[];
   imageFile?: File;
+}
+
+interface Attachment {
+  id: string;
+  naam: string;
+  type: string;
+  identificatienummer?: string;
+  aantal_slangen?: number;
+  gewicht: number;
 }
 
 interface HydraulicInput {
@@ -69,6 +80,11 @@ export default function MachinesAdmin() {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
   const [currentQrMachine, setCurrentQrMachine] = useState<Machine | null>(null);
+  const [search, setSearch] = useState('');
+  const [machineType, setMachineType] = useState('all');
+  const [machineName, setMachineName] = useState('all');
+  const [availableNames, setAvailableNames] = useState<string[]>([]);
+
   const [newMachine, setNewMachine] = useState<Partial<Machine>>({
     naam: '',
     beschrijving: '',
@@ -89,6 +105,11 @@ export default function MachinesAdmin() {
   });
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [attachmentsDialogOpen, setAttachmentsDialogOpen] = useState(false);
+  const [selectedMachineAttachments, setSelectedMachineAttachments] = useState<Attachment[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(12);
+  const [totalMachines, setTotalMachines] = useState(0);
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -200,6 +221,31 @@ export default function MachinesAdmin() {
     }
   };
 
+  const showConnectedAttachments = (machine: Machine) => {
+    const attachments = machine.attachment_machines?.map(am => am.attachments) || [];
+    setSelectedMachineAttachments(attachments);
+    setAttachmentsDialogOpen(true);
+  };
+
+  const fetchAvailableNames = useCallback(async () => {
+    try {
+      const { data: namesData, error } = await supabase
+        .from('machines')
+        .select('naam')
+        .order('naam', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching machine names:', error);
+        return;
+      }
+
+      const uniqueNames = [...new Set((namesData || []).map(m => m.naam))].filter(Boolean);
+      setAvailableNames(uniqueNames);
+    } catch (error) {
+      console.error('Error fetching available names:', error);
+    }
+  }, [supabase]);
+
   const checkAdminAndFetchMachines = useCallback(async () => {
     try {
       // Check for URL verification parameters first
@@ -238,47 +284,170 @@ export default function MachinesAdmin() {
         }
       }
 
-      await fetchMachinesWithInputs();
+      await fetchAvailableNames();
+      await fetchMachinesWithInputs(1, '');
     } catch {
       toast.error('Er is een fout opgetreden');
-    } finally {
-      setLoading(false);
     }
-  }, [router, searchParams, supabase]);
+  }, [router, searchParams, supabase, fetchAvailableNames]);
+
+  // Handle search with debouncing
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setCurrentPage(1); // Reset to first page on search
+    const timeoutId = setTimeout(() => {
+      fetchMachinesWithInputs(1, value, machineType, machineName);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [machineType, machineName]);
+
+  // Handle type filter change
+  const handleTypeChange = useCallback((type: string) => {
+    setMachineType(type);
+    setCurrentPage(1); // Reset to first page on filter change
+    fetchMachinesWithInputs(1, search, type, machineName);
+  }, [search, machineName]);
+
+  // Handle name filter change
+  const handleNameChange = useCallback((name: string) => {
+    setMachineName(name);
+    setCurrentPage(1); // Reset to first page on filter change
+    fetchMachinesWithInputs(1, search, machineType, name);
+  }, [search, machineType]);
+
+  // Handle page change
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+    fetchMachinesWithInputs(page, search, machineType, machineName);
+  }, [search, machineType, machineName]);
+
+  // Handle items per page change
+  const handleItemsPerPageChange = useCallback((items: number) => {
+    setItemsPerPage(items);
+    setCurrentPage(1); // Reset to first page
+    fetchMachinesWithInputs(1, search, machineType, machineName);
+  }, [search, machineType, machineName]);
 
   useEffect(() => {
     checkAdminAndFetchMachines();
   }, [checkAdminAndFetchMachines]);
 
-  const fetchMachinesWithInputs = async () => {
-    // Fetch machines
-    const { data: machinesData, error: machinesError } = await supabase
-      .from('machines')
-      .select('*')
-      .order('naam', { ascending: true });
+  // Scroll functionality for dialog
+  useEffect(() => {
+    if (!addDialogOpen) return;
 
-    if (machinesError) {
-      toast.error('Fout bij ophalen machines: ' + machinesError.message);
-      return;
+    const handleScroll = () => {
+      const scrollContainer = document.querySelector('.dialog-scroll-container');
+      const scrollButton = document.querySelector('.scroll-to-top-btn');
+      
+      if (scrollContainer && scrollButton) {
+        const scrollTop = scrollContainer.scrollTop;
+        
+        // Show button when scrolled down more than 200px
+        if (scrollTop > 200) {
+          scrollButton.classList.remove('opacity-0');
+          scrollButton.classList.add('opacity-100');
+        } else {
+          scrollButton.classList.remove('opacity-100');
+          scrollButton.classList.add('opacity-0');
+        }
+      }
+    };
+
+    const scrollContainer = document.querySelector('.dialog-scroll-container');
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll);
+      return () => scrollContainer.removeEventListener('scroll', handleScroll);
     }
+  }, [addDialogOpen]);
 
-    // For each machine, fetch hydraulic inputs
-    const enrichedMachines = await Promise.all(
-      (machinesData || []).map(async (machine) => {
-        const { data: hydraulicInputs } = await supabase
-          .from('machine_hydraulic_inputs')
-          .select('*')
-          .eq('machine_id', machine.id)
-          .order('volgorde', { ascending: true });
+  const fetchMachinesWithInputs = async (page: number = currentPage, searchTerm: string = search, typeFilter: string = machineType, nameFilter: string = machineName) => {
+    setLoading(true);
+    try {
+      // First get total count for pagination
+      let countQuery = supabase
+        .from('machines')
+        .select('*', { count: 'exact', head: true });
 
-        return {
-          ...machine,
-          hydraulic_inputs: hydraulicInputs || []
-        };
-      })
-    );
+      // Apply filters to count query
+      if (searchTerm) {
+        countQuery = countQuery.or(`naam.ilike.%${searchTerm}%,type.ilike.%${searchTerm}%,kenteken.ilike.%${searchTerm}%,beschrijving.ilike.%${searchTerm}%`);
+      }
+      if (typeFilter !== 'all') {
+        countQuery = countQuery.eq('type', typeFilter);
+      }
+      if (nameFilter !== 'all') {
+        countQuery = countQuery.eq('naam', nameFilter);
+      }
 
-    setMachines(enrichedMachines);
+      const { count } = await countQuery;
+      setTotalMachines(count || 0);
+
+      // Fetch paginated machines with attachment relationships
+      let machinesQuery = supabase
+        .from('machines')
+        .select(`
+          *,
+          attachment_machines(
+            attachments(
+              id,
+              naam,
+              type,
+              identificatienummer,
+              aantal_slangen,
+              gewicht
+            )
+          )
+        `)
+        .order('naam', { ascending: true })
+        .range((page - 1) * itemsPerPage, page * itemsPerPage - 1);
+
+      // Apply same filters to data query
+      if (searchTerm) {
+        machinesQuery = machinesQuery.or(`naam.ilike.%${searchTerm}%,type.ilike.%${searchTerm}%,kenteken.ilike.%${searchTerm}%,beschrijving.ilike.%${searchTerm}%`);
+      }
+      if (typeFilter !== 'all') {
+        machinesQuery = machinesQuery.eq('type', typeFilter);
+      }
+      if (nameFilter !== 'all') {
+        machinesQuery = machinesQuery.eq('naam', nameFilter);
+      }
+
+      const { data: machinesData, error: machinesError } = await machinesQuery;
+
+      if (machinesError) {
+        toast.error('Fout bij ophalen machines: ' + machinesError.message);
+        return;
+      }
+
+      // Batch fetch hydraulic inputs for all machines at once for better performance
+      const machineIds = (machinesData || []).map(m => m.id);
+      const { data: allHydraulicInputs } = await supabase
+        .from('machine_hydraulic_inputs')
+        .select('*')
+        .in('machine_id', machineIds)
+        .order('volgorde', { ascending: true });
+
+      // Group hydraulic inputs by machine_id for efficient lookup
+      const inputsByMachine = (allHydraulicInputs || []).reduce((acc, input) => {
+        if (!acc[input.machine_id]) acc[input.machine_id] = [];
+        acc[input.machine_id].push(input);
+        return acc;
+      }, {} as Record<string, HydraulicInput[]>);
+
+      // Enrich machines with their hydraulic inputs
+      const enrichedMachines = (machinesData || []).map(machine => ({
+        ...machine,
+        hydraulic_inputs: inputsByMachine[machine.id] || []
+      }));
+
+      setMachines(enrichedMachines);
+    } catch (error) {
+      console.error('Error fetching machines:', error);
+      toast.error('Er is een fout opgetreden bij het ophalen van machines');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getKleurDisplay = (kleur: string, showDescription = false) => {
@@ -656,209 +825,674 @@ export default function MachinesAdmin() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-gray-50">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="container mx-auto px-4 py-8">
         {/* Header Section */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                const verified = searchParams.get('verified') || 'true';
-                const email = searchParams.get('email') || 'admin@example.com';
-                router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
-              }}
-              className="w-fit"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Terug
-            </Button>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Machines Beheren</h1>
-          </div>
-          
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const verified = searchParams.get('verified') || 'true';
+                  const email = searchParams.get('email') || 'admin@example.com';
+                  router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
+                }}
+                className="w-fit border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Terug naar Admin
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-black">
+                  Machines Beheren
+                </h1>
+                <p className="text-gray-600 mt-1">Beheer uw machines en configureer hydraulische inputs</p>
+              </div>
+            </div>
+            
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
-              <Button className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200">
+                  <Plus className="w-4 h-4 mr-2" />
                   Nieuwe Machine
                 </Button>
               </DialogTrigger>
-            <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Nieuwe Machine Toevoegen</DialogTitle>
-                </DialogHeader>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                  <div>
-                    <Label htmlFor="naam">Naam</Label>
-                    <Input
-                      id="naam"
-                      value={newMachine.naam || ''}
-                      onChange={(e) => setNewMachine({...newMachine, naam: e.target.value})}
-                    />
+            <DialogContent className="w-[98vw] h-[95vh] sm:w-[90vw] sm:max-w-4xl sm:h-auto sm:max-h-[85vh] lg:max-w-5xl p-0 gap-0 overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 sm:p-6 rounded-t-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                    <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div>
-                    <Label htmlFor="type">Type</Label>
-                    <Input
-                      id="type"
-                      value={newMachine.type || ''}
-                      onChange={(e) => setNewMachine({...newMachine, type: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="kenteken">Kenteken</Label>
-                    <Input
-                      id="kenteken"
-                      value={newMachine.kenteken || ''}
-                      onChange={(e) => setNewMachine({...newMachine, kenteken: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="hydraulische_inputs">Hydraulische Inputs</Label>
-                    <Select 
-                      value={newMachine.hydraulische_inputs?.toString() || '2'} 
-                      onValueChange={(value) => setNewMachine({...newMachine, hydraulische_inputs: parseInt(value)})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 Input</SelectItem>
-                        <SelectItem value="2">2 Inputs</SelectItem>
-                        <SelectItem value="3">3 Inputs</SelectItem>
-                        <SelectItem value="4">4 Inputs</SelectItem>
-                        <SelectItem value="6">6 Inputs</SelectItem>
-                        <SelectItem value="8">8 Inputs</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="col-span-2">
-                    <Label htmlFor="beschrijving">Beschrijving</Label>
-                    <Textarea
-                      id="beschrijving"
-                      value={newMachine.beschrijving || ''}
-                      onChange={(e) => setNewMachine({...newMachine, beschrijving: e.target.value})}
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="gewicht">Gewicht (kg)</Label>
-                    <Input
-                      id="gewicht"
-                      inputMode="numeric"
-                      value={newMachine.gewicht || ''}
-                      onChange={(e) => setNewMachine({...newMachine, gewicht: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="werkdruk">Werkdruk (bar)</Label>
-                    <Input
-                      id="werkdruk"
-                      inputMode="numeric"
-                      value={newMachine.werkdruk || ''}
-                      onChange={(e) => setNewMachine({...newMachine, werkdruk: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="max_druk">Max Druk (bar)</Label>
-                    <Input
-                      id="max_druk"
-                      inputMode="numeric"
-                      value={newMachine.max_druk || ''}
-                      onChange={(e) => setNewMachine({...newMachine, max_druk: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="debiet">Debiet (l/min)</Label>
-                    <Input
-                      id="debiet"
-                      inputMode="numeric"
-                      value={newMachine.debiet || ''}
-                      onChange={(e) => setNewMachine({...newMachine, debiet: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="vermogen">Vermogen (kW)</Label>
-                    <Input
-                      id="vermogen"
-                      inputMode="numeric"
-                      value={newMachine.vermogen || ''}
-                      onChange={(e) => setNewMachine({...newMachine, vermogen: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-
-                {/* Image Upload Section for Edit */}
-                <div className="col-span-2">
-                  <Label>Foto van de Machine</Label>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <label htmlFor="machine-image" className="flex-1">
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors">
-                          <div className="flex flex-col items-center gap-2">
-                            <Upload className="w-8 h-8 text-gray-400" />
-                            <span className="text-sm text-gray-600">
-                              Klik om een nieuwe foto te selecteren
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              JPG, PNG (max 5MB)
-                            </span>
-                </div>
-                        </div>
-                        <input
-                          id="machine-image"
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageSelect}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                    
-                    {imagePreview && (
-                      <div className="relative">
-                        <Image
-                          src={imagePreview}
-                          alt="Preview"
-                          width={400}
-                          height={192}
-                          className="w-full h-48 object-cover rounded-lg border"
-                        />
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          className="absolute top-2 right-2"
-                          onClick={() => {
-                            setImagePreview(null);
-                            setNewMachine({...newMachine, imageFile: undefined, afbeelding: ''});
-                          }}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
+                    <DialogHeader>
+                      <DialogTitle className="text-lg sm:text-xl lg:text-2xl text-white">Nieuwe Machine</DialogTitle>
+                      <p className="text-green-100 text-sm sm:text-base mt-1">
+                        Voeg een nieuwe machine toe aan uw vloot
+                      </p>
+                    </DialogHeader>
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6">
-                <Button variant="outline" onClick={() => setAddDialogOpen(false)} className="w-full sm:w-auto">
-                    Annuleren
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto scroll-smooth scrollbar-thin scrollbar-thumb-green-400 scrollbar-track-gray-100 hover:scrollbar-thumb-green-500 dialog-scroll-container">
+                <div className="p-4 sm:p-6 lg:p-8">
+
+                  {/* Basic Information Section */}
+                  <div className="mb-6 lg:mb-8">
+                    <div className="flex items-center gap-2 mb-4 lg:mb-6">
+                      <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">Basisinformatie</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="naam" className="text-sm sm:text-base font-medium">Naam <span className="text-red-500">*</span></Label>
+                        <Input
+                          id="naam"
+                          value={newMachine.naam || ''}
+                          onChange={(e) => setNewMachine({...newMachine, naam: e.target.value})}
+                          className="w-full text-base border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg"
+                          placeholder="Bijv. John Deere 8400R"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="type" className="text-sm sm:text-base font-medium">Type <span className="text-red-500">*</span></Label>
+                        <Input
+                          id="type"
+                          value={newMachine.type || ''}
+                          onChange={(e) => setNewMachine({...newMachine, type: e.target.value})}
+                          className="w-full text-base border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg"
+                          placeholder="Bijv. Trekker, Maaidorser, Combine"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="kenteken" className="text-sm sm:text-base font-medium">Kenteken</Label>
+                        <Input
+                          id="kenteken"
+                          value={newMachine.kenteken || ''}
+                          onChange={(e) => setNewMachine({...newMachine, kenteken: e.target.value})}
+                          className="w-full text-base border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg"
+                          placeholder="Bijv. 12-ABC-3"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="hydraulische_inputs" className="text-sm sm:text-base font-medium">Hydraulische Inputs</Label>
+                        <Select 
+                          value={newMachine.hydraulische_inputs?.toString() || '2'} 
+                          onValueChange={(value) => setNewMachine({...newMachine, hydraulische_inputs: parseInt(value)})}
+                        >
+                          <SelectTrigger className="w-full border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 Input</SelectItem>
+                            <SelectItem value="2">2 Inputs</SelectItem>
+                            <SelectItem value="3">3 Inputs</SelectItem>
+                            <SelectItem value="4">4 Inputs</SelectItem>
+                            <SelectItem value="6">6 Inputs</SelectItem>
+                            <SelectItem value="8">8 Inputs</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="col-span-1 sm:col-span-2 lg:col-span-3 space-y-1.5">
+                        <Label htmlFor="beschrijving" className="text-sm sm:text-base font-medium">Beschrijving</Label>
+                        <Textarea
+                          id="beschrijving"
+                          value={newMachine.beschrijving || ''}
+                          onChange={(e) => setNewMachine({...newMachine, beschrijving: e.target.value})}
+                          className="w-full min-h-[100px] text-base border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg"
+                          placeholder="Voer een gedetailleerde beschrijving van de machine in..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Technical Specifications Section */}
+                  <div className="mb-6 lg:mb-8">
+                    <div className="flex items-center gap-2 mb-4 lg:mb-6">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">Technische Specificaties</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="gewicht" className="text-sm sm:text-base font-medium">Gewicht <span className="text-gray-500">(kg)</span></Label>
+                        <Input
+                          id="gewicht"
+                          type="number"
+                          value={newMachine.gewicht || ''}
+                          onChange={(e) => setNewMachine({...newMachine, gewicht: parseInt(e.target.value) || 0})}
+                          className="w-full text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                          min="0"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="werkdruk" className="text-sm sm:text-base font-medium">Werkdruk <span className="text-gray-500">(bar)</span></Label>
+                        <Input
+                          id="werkdruk"
+                          type="number"
+                          value={newMachine.werkdruk || ''}
+                          onChange={(e) => setNewMachine({...newMachine, werkdruk: parseInt(e.target.value) || 0})}
+                          className="w-full text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                          min="0"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="max_druk" className="text-sm sm:text-base font-medium">Max Druk <span className="text-gray-500">(bar)</span></Label>
+                        <Input
+                          id="max_druk"
+                          type="number"
+                          value={newMachine.max_druk || ''}
+                          onChange={(e) => setNewMachine({...newMachine, max_druk: parseInt(e.target.value) || 0})}
+                          className="w-full text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                          min="0"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="debiet" className="text-sm sm:text-base font-medium">Debiet <span className="text-gray-500">(l/min)</span></Label>
+                        <Input
+                          id="debiet"
+                          type="number"
+                          value={newMachine.debiet || ''}
+                          onChange={(e) => setNewMachine({...newMachine, debiet: parseInt(e.target.value) || 0})}
+                          className="w-full text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                          min="0"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vermogen" className="text-sm sm:text-base font-medium">Vermogen <span className="text-gray-500">(kW)</span></Label>
+                        <Input
+                          id="vermogen"
+                          type="number"
+                          value={newMachine.vermogen || ''}
+                          onChange={(e) => setNewMachine({...newMachine, vermogen: parseInt(e.target.value) || 0})}
+                          className="w-full text-base border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
+                          min="0"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Photo Upload Section */}
+                  <div className="mb-6 lg:mb-8">
+                    <div className="flex items-center gap-2 mb-4 lg:mb-6">
+                      <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                      <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900">Foto Upload</h3>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                      <div className="space-y-4">
+                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 lg:p-8 transition-all hover:border-green-400 hover:bg-green-50/20">
+                          <label htmlFor="machine-image" className="cursor-pointer block">
+                            <div className="text-center">
+                              <div className="w-12 h-12 lg:w-16 lg:h-16 mx-auto mb-3 lg:mb-4 bg-green-100 rounded-lg flex items-center justify-center">
+                                <Upload className="w-6 h-6 lg:w-8 lg:h-8 text-green-600" />
+                              </div>
+                              <p className="text-sm sm:text-base lg:text-lg font-medium text-gray-900 mb-1">
+                                Foto uploaden
+                              </p>
+                              <p className="text-xs sm:text-sm lg:text-base text-gray-500">
+                                JPG, PNG (maximaal 5MB)
+                              </p>
+                            </div>
+                            <input
+                              id="machine-image"
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageSelect}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      
+                      {imagePreview && (
+                        <div className="relative rounded-xl overflow-hidden shadow-lg">
+                          <Image
+                            src={imagePreview}
+                            alt="Preview"
+                            width={400}
+                            height={192}
+                            className="w-full h-48 sm:h-56 lg:h-64 object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/20"></div>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="absolute top-3 right-3 h-8 w-8 p-0 shadow-lg"
+                            onClick={() => {
+                              setImagePreview(null);
+                              setNewMachine({...newMachine, imageFile: undefined, afbeelding: ''});
+                            }}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scroll to top button - only visible when scrolled */}
+              <div className="absolute bottom-24 right-4 z-20">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full w-10 h-10 p-0 bg-white/90 backdrop-blur-sm border-gray-300 shadow-lg hover:shadow-xl transition-all duration-200 scroll-to-top-btn opacity-0"
+                  onClick={() => {
+                    const scrollContainer = document.querySelector('.dialog-scroll-container');
+                    if (scrollContainer) {
+                      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                  </svg>
+                </Button>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 px-4 sm:px-6 py-4 border-t border-gray-200 rounded-b-lg flex-shrink-0">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Velden met * zijn verplicht</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setAddDialogOpen(false)} 
+                      className="w-full sm:w-auto h-11 text-base font-medium border-gray-300 hover:bg-gray-100"
+                    >
+                      Annuleren
+                    </Button>
+                    <Button 
+                      onClick={addNewMachine} 
+                      className="w-full sm:w-auto h-11 text-base font-medium bg-green-600 hover:bg-green-700 shadow-lg"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Machine Toevoegen
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* Search and Filter Section */}
+        <div className="mb-6 bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
+          {/* Header with search */}
+          <div className="bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200 p-3 sm:p-4">
+            <div className="flex flex-col space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-green-800 mb-1">Machines Zoeken & Filteren</h3>
+                  <p className="text-xs text-green-600">Vind snel de machine die je zoekt</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-green-700 bg-green-200/50 px-2 py-1 rounded">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <span className="font-medium">{totalMachines} machines</span>
+                </div>
+              </div>
+              
+              {/* Search Bar with Name, Type and Per Page Filters */}
+              <div className="space-y-3">
+                {/* Mobile Layout - Full width search bar */}
+                <div className="block sm:hidden">
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <Input
+                      type="text"
+                      placeholder="Zoek machines..."
+                      value={search}
+                      onChange={e => handleSearchChange(e.target.value)}
+                      className="pl-10 pr-4 py-3 text-sm bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg shadow-sm w-full"
+                    />
+                    {search && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSearchChange('')}
+                        className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 p-0 hover:bg-gray-100"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mobile Layout - Filters in grid */}
+                <div className="grid grid-cols-2 gap-3 sm:hidden">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Machine Naam</label>
+                    <Select
+                      value={machineName}
+                      onValueChange={handleNameChange}
+                    >
+                      <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 h-10">
+                        <SelectValue placeholder="Alle namen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Alle namen</SelectItem>
+                        {availableNames.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Machine Type</label>
+                    <Select
+                      value={machineType}
+                      onValueChange={handleTypeChange}
+                    >
+                      <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 h-10">
+                        <SelectValue placeholder="Alle types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Alle types</SelectItem>
+                        <SelectItem value="6R 155">6R 155</SelectItem>
+                        <SelectItem value="EWR150E">EWR150E</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Mobile Layout - Items per page */}
+                <div className="sm:hidden">
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Items per pagina</label>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => handleItemsPerPageChange(parseInt(value))}
+                  >
+                    <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 h-10 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="6">6 items</SelectItem>
+                      <SelectItem value="12">12 items</SelectItem>
+                      <SelectItem value="24">24 items</SelectItem>
+                      <SelectItem value="48">48 items</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Desktop Layout - All in one row */}
+                <div className="hidden sm:flex gap-3 items-end">
+                  <div className="relative flex-1 min-w-0">
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Zoeken</label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <Search className="h-4 w-4" />
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="Zoek op naam, type, kenteken of beschrijving..."
+                        value={search}
+                        onChange={e => handleSearchChange(e.target.value)}
+                        className="pl-10 pr-4 py-2.5 text-sm bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 rounded-lg shadow-sm"
+                      />
+                      {search && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSearchChange('')}
+                          className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-shrink-0">
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Naam</label>
+                    <Select
+                      value={machineName}
+                      onValueChange={handleNameChange}
+                    >
+                      <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 w-44">
+                        <SelectValue placeholder="Alle namen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Alle namen</SelectItem>
+                        {availableNames.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex-shrink-0">
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Type</label>
+                    <Select
+                      value={machineType}
+                      onValueChange={handleTypeChange}
+                    >
+                      <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 w-36">
+                        <SelectValue placeholder="Alle types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Alle types</SelectItem>
+                        <SelectItem value="6R 155">6R 155</SelectItem>
+                        <SelectItem value="EWR150E">EWR150E</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex-shrink-0">
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">Per pagina</label>
+                    <Select
+                      value={itemsPerPage.toString()}
+                      onValueChange={(value) => handleItemsPerPageChange(parseInt(value))}
+                    >
+                      <SelectTrigger className="bg-white border-gray-300 focus:border-green-500 focus:ring-green-500 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="6">6 items</SelectItem>
+                        <SelectItem value="12">12 items</SelectItem>
+                        <SelectItem value="24">24 items</SelectItem>
+                        <SelectItem value="48">48 items</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Results and Pagination */}
+          <div className="border-t border-gray-200 p-3 sm:p-4 bg-white">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">
+                    {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, totalMachines)}
+                  </span>
+                  <span className="text-gray-400 mx-1">van</span>
+                  <span className="font-medium">{totalMachines}</span>
+                  <span className="text-gray-400 ml-1">machines</span>
+                </div>
+                                 {(search || machineType !== 'all' || machineName !== 'all') && (
+                   <div className="hidden sm:flex items-center gap-2">
+                     <div className="w-1 h-4 bg-gray-300"></div>
+                     <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                       Gefilterd
+                     </span>
+                   </div>
+                 )}
+              </div>
+              
+              {/* Pagination Controls */}
+              {Math.ceil(totalMachines / itemsPerPage) > 1 && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="px-3 border-gray-300"
+                  >
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    <span className="hidden sm:inline">Vorige</span>
                   </Button>
-                <Button onClick={addNewMachine} className="w-full sm:w-auto">
-                    Machine Toevoegen
+                  
+                  <div className="flex items-center gap-1 mx-2">
+                    {(() => {
+                      const totalPages = Math.ceil(totalMachines / itemsPerPage);
+                      const pages: number[] = [];
+                      
+                      if (totalPages <= 5) {
+                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                      } else {
+                        if (currentPage <= 3) {
+                          pages.push(1, 2, 3, 4);
+                          pages.push(-1);
+                          pages.push(totalPages);
+                        } else if (currentPage >= totalPages - 2) {
+                          pages.push(1);
+                          pages.push(-1);
+                          for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
+                        } else {
+                          pages.push(1);
+                          pages.push(-1);
+                          for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
+                          pages.push(-2);
+                          pages.push(totalPages);
+                        }
+                      }
+                      
+                      return pages.map((page, index) => (
+                        page > 0 ? (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handlePageChange(page)}
+                            className={`w-9 h-9 p-0 text-sm ${
+                              currentPage === page 
+                                ? 'bg-green-600 hover:bg-green-700 border-green-600' 
+                                : 'border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {page}
+                          </Button>
+                        ) : (
+                          <span key={`ellipsis-${index}`} className="px-2 text-gray-400 text-sm">...</span>
+                        )
+                      ));
+                    })()}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === Math.ceil(totalMachines / itemsPerPage)}
+                    className="px-3 border-gray-300"
+                  >
+                    <span className="hidden sm:inline">Volgende</span>
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                   </Button>
                 </div>
-              </DialogContent>
-            </Dialog>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Machines Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {machines.map((machine) => (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+            <span className="ml-3 text-gray-600">Machines laden...</span>
+          </div>
+        ) : machines.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Geen machines gevonden</h3>
+            <p className="text-gray-500 mb-6">
+              {search || machineType !== 'all' || machineName !== 'all'
+                ? 'Probeer andere zoektermen of filters.' 
+                : 'Voeg je eerste machine toe om te beginnen.'
+              }
+            </p>
+            <Button 
+              onClick={() => setAddDialogOpen(true)} 
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Eerste Machine Toevoegen
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {machines.map((machine) => (
             <Card key={machine.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
                 <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="truncate font-semibold">{machine.naam}</span>
+                  <div className="flex flex-col">
+                    <span className="truncate font-semibold">{machine.naam}</span>
+                    {machine.attachment_machines && machine.attachment_machines.length > 0 && (
+                      <div className="mt-2">
+                        {machine.attachment_machines.length === 1 ? (
+                          <div className="flex items-center gap-2">
+                            <Link className="w-3 h-3 text-green-600" />
+                            <span className="text-xs text-green-600 font-medium">
+                              {machine.attachment_machines[0].attachments.naam}
+                            </span>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => showConnectedAttachments(machine)}
+                            className="h-6 px-2 text-xs border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300"
+                          >
+                            <Link className="w-3 h-3 mr-1" />
+                            <span className="font-medium">{machine.attachment_machines.length} aanbouwdelen</span>
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => startEditing(machine)}>
                       <Edit className="w-4 h-4" />
@@ -1053,15 +1687,7 @@ export default function MachinesAdmin() {
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-
-        {machines.length === 0 && (
-          <div className="text-center py-8">
-            <p className="text-gray-500">Nog geen machines toegevoegd</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Klik op &apos;Nieuwe Machine&apos; om te beginnen
-            </p>
+            ))}
           </div>
         )}
 
@@ -1280,6 +1906,88 @@ export default function MachinesAdmin() {
                   Download PNG
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Connected Attachments Dialog */}
+        <Dialog open={attachmentsDialogOpen} onOpenChange={setAttachmentsDialogOpen}>
+          <DialogContent className="w-[95vw] sm:max-w-3xl">
+            <DialogHeader className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-100">
+                  <Link className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl font-semibold">Gekoppelde Aanbouwdelen</DialogTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {selectedMachineAttachments.length} aanbouwdeel{selectedMachineAttachments.length !== 1 ? 'en' : ''} gekoppeld aan deze machine
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {selectedMachineAttachments.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Geen aanbouwdelen gekoppeld</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Ga naar Machine Configuratie om aanbouwdelen te koppelen
+                  </p>
+                </div>
+              ) : (
+                selectedMachineAttachments.map((attachment, index) => (
+                  <div 
+                    key={attachment.id || index}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <span className="text-blue-600 font-bold text-sm">
+                            {attachment.naam?.charAt(0).toUpperCase() || 'A'}
+                          </span>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900">{attachment.naam}</h4>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-sm text-gray-600">
+                              Type: <span className="font-medium">{attachment.type}</span>
+                            </span>
+                            {attachment.identificatienummer && (
+                              <span className="text-sm text-gray-600">
+                                ID: <span className="font-medium">{attachment.identificatienummer}</span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-sm text-gray-600">
+                              Slangen: <span className="font-medium">{attachment.aantal_slangen || 0}</span>
+                            </span>
+                            <span className="text-sm text-gray-600">
+                              Gewicht: <span className="font-medium">{attachment.gewicht}kg</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <Badge variant="secondary" className="bg-green-100 text-green-700">
+                        Gekoppeld
+                      </Badge>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button 
+                onClick={() => setAttachmentsDialogOpen(false)}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Sluiten
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

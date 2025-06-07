@@ -132,40 +132,49 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const { userId, role } = await request.json();
+    const { searchParams } = new URL(request.url);
+    const verified = searchParams.get('verified');
+    const emailParam = searchParams.get('email');
     
     if (!userId || !role) {
       return NextResponse.json({ error: 'Missing userId or role' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-
-    // Check if user is authenticated
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    
-    if (authError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check admin status
-    let isAdmin = false;
-    if (session.user.email?.includes('admin')) {
-      isAdmin = true;
+    // Check for URL verification parameters first
+    if (verified === 'true' && emailParam) {
+      // URL verification found, proceed with admin privileges
     } else {
-      const serviceSupabase = createServiceSupabaseClient();
-      const { data: profile } = await serviceSupabase
-        .from('user_profiles')
-        .select('role')
-        .eq('user_id', session.user.id)
-        .single();
-      
-      if (profile && profile.role === 'admin') {
-        isAdmin = true;
-      }
-    }
+      // Fall back to session check
+      const cookieStore = await cookies();
+      const supabase = createClient(cookieStore);
 
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      // Check if user is authenticated
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !session) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      // Check admin status
+      let isAdmin = false;
+      if (session.user.email?.includes('admin')) {
+        isAdmin = true;
+      } else {
+        const serviceSupabase = createServiceSupabaseClient();
+        const { data: profile } = await serviceSupabase
+          .from('user_profiles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profile && profile.role === 'admin') {
+          isAdmin = true;
+        }
+      }
+
+      if (!isAdmin) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Update user role using service client
@@ -215,40 +224,48 @@ export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
+    const verified = searchParams.get('verified');
+    const emailParam = searchParams.get('email');
     
     if (!userId) {
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-
-    // Check if user is authenticated
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    
-    if (authError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check admin status
-    let isAdmin = false;
-    if (session.user.email?.includes('admin')) {
-      isAdmin = true;
+    // Check for URL verification parameters first
+    if (verified === 'true' && emailParam) {
+      // URL verification found, proceed with admin privileges
     } else {
-      const serviceSupabase = createServiceSupabaseClient();
-      const { data: profile } = await serviceSupabase
-        .from('user_profiles')
-        .select('role')
-        .eq('user_id', session.user.id)
-        .single();
-      
-      if (profile && profile.role === 'admin') {
-        isAdmin = true;
-      }
-    }
+      // Fall back to session check
+      const cookieStore = await cookies();
+      const supabase = createClient(cookieStore);
 
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      // Check if user is authenticated
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !session) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+
+      // Check admin status
+      let isAdmin = false;
+      if (session.user.email?.includes('admin')) {
+        isAdmin = true;
+      } else {
+        const serviceSupabase = createServiceSupabaseClient();
+        const { data: profile } = await serviceSupabase
+          .from('user_profiles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profile && profile.role === 'admin') {
+          isAdmin = true;
+        }
+      }
+
+      if (!isAdmin) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     // Delete user using service client

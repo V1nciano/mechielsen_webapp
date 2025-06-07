@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Zap, Cable, ArrowRight, CheckCircle2, Settings } from 'lucide-react';
+import { ArrowLeft, Zap, ArrowRight, ArrowDown, CheckCircle2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Image from 'next/image';
@@ -29,6 +29,11 @@ interface Attachment {
   naam: string;
   type: string;
   afbeelding?: string;
+  werkdruk: number;
+  max_druk: number;
+  debiet?: number;
+  vermogen?: number;
+  gewicht?: number;
   hydraulic_hoses?: AttachmentHose[];
 }
 
@@ -36,6 +41,19 @@ interface AttachmentHose {
   id: string;
   kleur: string;
   volgorde: number;
+}
+
+
+
+interface Connection {
+  id: string;
+  inputId: string;
+  inputKleur: string;
+  inputNummer: number;
+  attachmentId: string;
+  attachmentNaam: string;
+  hoseKleur: string;
+  hoseVolgorde: number;
 }
 
 const KLEUREN = [
@@ -51,7 +69,9 @@ const KLEUREN = [
 
 export default function VisualConfigPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const machineId = params?.machineId as string;
+  const attachmentId = searchParams.get('attachmentId');
   
   const [machine, setMachine] = useState<Machine | null>(null);
   const [hydraulicInputs, setHydraulicInputs] = useState<HydraulicInput[]>([]);
@@ -59,6 +79,7 @@ export default function VisualConfigPage() {
   const [loading, setLoading] = useState(true);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
+  const [connectionStatuses, setConnectionStatuses] = useState<{[key: string]: boolean}>({});
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -93,24 +114,39 @@ export default function VisualConfigPage() {
         setHydraulicInputs(hydraulicInputsData || []);
       }
 
-      // Fetch attachments for this machine with their hoses
-      const { data: attachmentsData, error: attachmentsError } = await supabase
-        .from('attachments')
+      // Fetch only attachments that are coupled to this machine
+      let attachmentsQuery = supabase
+        .from('attachment_machines')
         .select(`
-          *,
-          hydraulic_hoses:attachment_hydraulic_hoses(
-            id,
-            kleur,
-            volgorde
+          attachment:attachments(
+            *,
+            hydraulic_hoses:attachment_hydraulic_hoses(
+              id,
+              kleur,
+              volgorde
+            )
           )
         `)
-        .order('naam', { ascending: true });
+        .eq('machine_id', machineId);
+
+      // If a specific attachment ID is provided, filter to only that attachment
+      if (attachmentId) {
+        attachmentsQuery = attachmentsQuery.eq('attachment_id', attachmentId);
+      }
+
+      const { data: attachmentsData, error: attachmentsError } = await attachmentsQuery;
 
       if (attachmentsError) {
         console.error('Error fetching attachments:', attachmentsError);
         toast.error('Fout bij ophalen aanbouwdelen');
       } else {
-        setAttachments(attachmentsData || []);
+        // Extract attachments from the relationship data
+        const coupledAttachments = attachmentsData
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ?.map((item: any) => item.attachment)
+          .filter((attachment): attachment is Attachment => attachment !== null)
+          .sort((a, b) => a.naam.localeCompare(b.naam)) || [];
+        setAttachments(coupledAttachments);
       }
 
     } catch (error) {
@@ -118,7 +154,7 @@ export default function VisualConfigPage() {
     } finally {
       setLoading(false);
     }
-  }, [machineId, supabase, router]);
+  }, [machineId, attachmentId, supabase, router]);
 
   useEffect(() => {
     fetchData();
@@ -139,14 +175,16 @@ export default function VisualConfigPage() {
     );
   };
 
-  const getMatchingConnections = () => {
-    const connections: Array<{inputId: string, inputKleur: string, inputNummer: number, attachmentId: string, attachmentNaam: string, hoseKleur: string, hoseVolgorde: number}> = [];
+  const getMatchingConnections = (): Connection[] => {
+    const connections: Connection[] = [];
     
     hydraulicInputs.forEach(input => {
       attachments.forEach(attachment => {
         attachment.hydraulic_hoses?.forEach(hose => {
           if (input.kleur === hose.kleur) {
+            const connectionId = `${input.id}-${hose.id}`;
             connections.push({
+              id: connectionId,
               inputId: input.id,
               inputKleur: input.kleur,
               inputNummer: input.input_nummer,
@@ -161,6 +199,17 @@ export default function VisualConfigPage() {
     });
     
     return connections;
+  };
+
+  const toggleConnectionStatus = (connectionId: string) => {
+    setConnectionStatuses(prev => ({
+      ...prev,
+      [connectionId]: !prev[connectionId]
+    }));
+  };
+
+  const areAllConnectionsChecked = (connections: Connection[]) => {
+    return connections.length > 0 && connections.every(conn => connectionStatuses[conn.id]);
   };
 
   if (loading) {
@@ -180,58 +229,61 @@ export default function VisualConfigPage() {
     <div className="min-h-screen p-4 md:p-8 bg-gray-50">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="mb-6 md:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={() => router.back()}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
-              Terug
+              <span className="hidden sm:inline">Terug</span>
             </Button>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Slangconfiguratie</h1>
-              <p className="text-gray-600">{machine?.naam} ({machine?.type})</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">Slangconfiguratie</h1>
+              <p className="text-sm sm:text-base text-gray-600 truncate">{machine?.naam} ({machine?.type})</p>
+              {attachmentId && (
+                <p className="text-xs sm:text-sm text-blue-600 mt-1">🔗 Geselecteerd aanbouwdeel wordt getoond</p>
+              )}
             </div>
           </div>
         </div>
 
         {/* Main Layout: Machine links, Verbindingen midden, Aanbouwdelen rechts */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 md:gap-6">
           
           {/* Links: Machine met Hydraulische Inputs */}
-          <div className="lg:col-span-4">
+          <div className="md:col-span-1 lg:col-span-4">
             <Card className="h-fit">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-blue-600" />
-                  Machine: {machine?.naam}
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  <span className="truncate">Machine: {machine?.naam}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {/* Machine Image */}
                 {machine?.afbeelding && (
-                  <div className="mb-6">
+                  <div className="mb-4 md:mb-6">
                     <Image
                       src={machine.afbeelding}
                       alt={machine.naam}
                       width={300}
                       height={200}
-                      className="w-full h-48 object-cover rounded-lg border"
+                      className="w-full h-32 sm:h-40 md:h-48 object-cover rounded-lg border"
                     />
                   </div>
                 )}
                 
                 {/* Hydraulische Inputs */}
-                <div className="space-y-3">
-                  <h3 className="font-semibold text-gray-700 mb-3">Hydraulische Inputs</h3>
+                <div className="space-y-2 md:space-y-3">
+                  <h3 className="font-semibold text-gray-700 text-sm sm:text-base mb-2 md:mb-3">Hydraulische Inputs</h3>
                   {hydraulicInputs.map((input) => (
-                    <div key={input.id} className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border-2 border-blue-100">
-                      {getKleurDisplay(input.kleur, 'w-10 h-10')}
-                      <div>
-                        <p className="font-medium text-lg">Input {input.input_nummer}</p>
-                        <p className="text-sm text-gray-600 capitalize">{input.kleur} aansluiting</p>
+                    <div key={input.id} className="flex items-center gap-2 sm:gap-3 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      {getKleurDisplay(input.kleur, 'w-8 h-8 sm:w-10 sm:h-10')}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base text-blue-800">Input {input.input_nummer}</p>
+                        <p className="text-xs sm:text-sm text-blue-600 capitalize truncate">{input.kleur} aansluiting</p>
                       </div>
                     </div>
                   ))}
@@ -241,11 +293,11 @@ export default function VisualConfigPage() {
           </div>
 
           {/* Midden: Verbindingen Overzicht */}
-          <div className="lg:col-span-4">
+          <div className="md:col-span-2 lg:col-span-4">
             <Card className="h-fit">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ArrowRight className="w-5 h-5 text-green-600" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                   Kleur Verbindingen
                 </CardTitle>
               </CardHeader>
@@ -255,30 +307,103 @@ export default function VisualConfigPage() {
                     <p className="text-sm text-gray-600 mb-4">
                       Gevonden verbindingen op basis van kleurcodering:
                     </p>
-                    {connections.map((conn, index) => (
-                      <div key={index} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                        <div className="flex items-center gap-2">
-                          {getKleurDisplay(conn.inputKleur, 'w-6 h-6')}
-                          <span className="text-sm font-medium">Input {conn.inputNummer}</span>
-                        </div>
-                        <ArrowRight className="w-4 h-4 text-gray-400" />
-                        <div className="flex items-center gap-2">
-                          {getKleurDisplay(conn.hoseKleur, 'w-6 h-6')}
-                          <div className="text-sm">
-                            <p className="font-medium">{conn.attachmentNaam}</p>
-                            <p className="text-gray-500">Slang {conn.hoseVolgorde}</p>
+                    {connections.map((conn, index) => {
+                      const isChecked = connectionStatuses[conn.id] || false;
+                      return (
+                        <div key={index} className={`relative p-2 lg:p-3 rounded-lg border-2 transition-all shadow-sm ${
+                          isChecked 
+                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-green-100' 
+                            : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
+                        }`}>
+                          {/* Connection visual flow */}
+                          <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 lg:gap-3">
+                            {/* Machine Input */}
+                            <div className="flex items-center gap-1.5 bg-blue-50 px-2 py-1.5 sm:px-2.5 rounded-md border border-blue-200 min-w-0 flex-1 sm:flex-none sm:w-auto lg:min-w-[130px]">
+                              {getKleurDisplay(conn.inputKleur, 'w-7 h-7 lg:w-8 lg:h-8')}
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-xs sm:text-sm text-blue-800">Input {conn.inputNummer}</p>
+                                <p className="text-xs text-blue-600 capitalize truncate">{conn.inputKleur}</p>
+                              </div>
+                            </div>
+                            
+                            {/* Connection Arrow */}
+                            <div className="flex items-center justify-center shrink-0">
+                              <div className={`p-1 lg:p-1.5 rounded-full transition-all ${
+                                isChecked ? 'bg-green-500' : 'bg-gray-300'
+                              }`}>
+                                {/* Mobile: Arrow Down, Desktop: Arrow Right */}
+                                <ArrowDown className={`block sm:hidden w-3.5 h-3.5 lg:w-4 lg:h-4 ${
+                                  isChecked ? 'text-white' : 'text-gray-600'
+                                }`} />
+                                <ArrowRight className={`hidden sm:block w-3.5 h-3.5 lg:w-4 lg:h-4 ${
+                                  isChecked ? 'text-white' : 'text-gray-600'
+                                }`} />
+                              </div>
+                            </div>
+                            
+                            {/* Attachment Hose */}
+                            <div className="flex items-center gap-1.5 bg-orange-50 px-2 py-1.5 sm:px-2.5 rounded-md border border-orange-200 min-w-0 flex-1 sm:flex-none sm:w-auto lg:min-w-[130px]">
+                              {getKleurDisplay(conn.hoseKleur, 'w-7 h-7 lg:w-8 lg:h-8')}
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-xs sm:text-sm text-orange-800">Slang {conn.hoseVolgorde}</p>
+                                <p className="text-xs text-orange-600 capitalize truncate">{conn.hoseKleur}</p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Status and Check Button */}
+                          <div className="mt-2 lg:mt-3 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 sm:justify-between">
+                            <div className={`text-xs font-medium px-2 py-1 rounded-full ${
+                              isChecked 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {isChecked ? '✓ Gecontroleerd' : 'Te controleren'}
+                            </div>
+                            
+                            <Button
+                              variant={isChecked ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => toggleConnectionStatus(conn.id)}
+                              className={`w-full sm:w-auto text-xs px-3 py-1.5 transition-all font-medium ${
+                                isChecked 
+                                  ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' 
+                                  : 'border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                              }`}
+                            >
+                              {isChecked ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                  <span className="hidden sm:inline">OK</span>
+                                  <span className="sm:hidden">OK</span>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="w-3.5 h-3.5 mr-1 rounded-full border-2 border-gray-400"></div>
+                                  <span className="hidden sm:inline">Check</span>
+                                  <span className="sm:hidden">Check</span>
+                                </>
+                              )}
+                            </Button>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     
                     {/* Aansluiting Voltooid Knop */}
                     <div className="mt-6 pt-4 border-t border-gray-200">
                       <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
                         <DialogTrigger asChild>
                           <Button 
-                            className="w-full flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                            className={`w-full min-h-[64px] flex items-center justify-center gap-3 p-4 text-sm sm:text-base font-medium transition-all rounded-xl ${
+                              areAllConnectionsChecked(connections)
+                                ? 'bg-green-600 hover:bg-green-700 shadow-lg hover:shadow-xl'
+                                : 'bg-gray-400 cursor-not-allowed'
+                            }`}
+                            disabled={!areAllConnectionsChecked(connections)}
                             onClick={() => {
+                              if (!areAllConnectionsChecked(connections)) return;
+                              
                               // Find the most connected attachment
                               const attachmentConnections = connections.reduce((acc, conn) => {
                                 acc[conn.attachmentId] = (acc[conn.attachmentId] || 0) + 1;
@@ -296,8 +421,31 @@ export default function VisualConfigPage() {
                               }
                             }}
                           >
-                            <CheckCircle2 className="w-5 h-5" />
-                            Aansluiting Voltooid - Toon Specificaties
+                            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                            <div className="flex-1 text-center">
+                              {areAllConnectionsChecked(connections) ? (
+                                <div className="space-y-1">
+                                  <div className="font-semibold text-base">Aansluiting Voltooid!</div>
+                                  <div className="text-xs opacity-90">Tik om specificaties te bekijken</div>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <div className="font-medium text-base">Controleer alle verbindingen</div>
+                                  <div className="text-xs opacity-90 flex items-center justify-center gap-2">
+                                    <div className="flex items-center gap-1">
+                                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                                      <span>{connections.filter(conn => connectionStatuses[conn.id]).length}</span>
+                                    </div>
+                                    <span>/</span>
+                                    <div className="flex items-center gap-1">
+                                      <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                                      <span>{connections.length}</span>
+                                    </div>
+                                    <span>voltooid</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -339,29 +487,42 @@ export default function VisualConfigPage() {
                                     Machine Instellingen
                                   </h3>
                                   <div className="bg-gradient-to-br from-orange-50 to-yellow-50 border-2 border-orange-200 p-4 rounded-xl">
-                                    <h5 className="font-semibold text-orange-800 mb-3">🔧 Aanbevolen Instellingen:</h5>
+                                    <h5 className="font-semibold text-orange-800 mb-3">🔧 Aanbouwdeel Specificaties:</h5>
                                     <div className="space-y-3">
                                       <div className="flex justify-between items-center bg-white p-2 rounded">
-                                        <span className="font-medium text-gray-700">Hydraulische Druk:</span>
-                                        <span className="font-bold text-orange-600">200-250 bar</span>
+                                        <span className="font-medium text-gray-700">Werkdruk:</span>
+                                        <span className="font-bold text-orange-600">{selectedAttachment.werkdruk} bar</span>
                                       </div>
                                       <div className="flex justify-between items-center bg-white p-2 rounded">
-                                        <span className="font-medium text-gray-700">Flow Rate:</span>
-                                        <span className="font-bold text-orange-600">60-100 l/min</span>
+                                        <span className="font-medium text-gray-700">Max Druk:</span>
+                                        <span className="font-bold text-orange-600">{selectedAttachment.max_druk} bar</span>
                                       </div>
-                                      <div className="flex justify-between items-center bg-white p-2 rounded">
-                                        <span className="font-medium text-gray-700">Olie Temperatuur:</span>
-                                        <span className="font-bold text-orange-600">40-80°C</span>
-                                      </div>
-                                      <div className="flex justify-between items-center bg-white p-2 rounded">
-                                        <span className="font-medium text-gray-700">Filter Status:</span>
-                                        <span className="font-bold text-red-600">Controleren!</span>
-                                      </div>
+                                      {selectedAttachment.debiet && (
+                                        <div className="flex justify-between items-center bg-white p-2 rounded">
+                                          <span className="font-medium text-gray-700">Debiet:</span>
+                                          <span className="font-bold text-orange-600">{selectedAttachment.debiet} l/min</span>
+                                        </div>
+                                      )}
+                                      {selectedAttachment.vermogen != null && selectedAttachment.vermogen > 0 && (
+                                        <div className="flex justify-between items-center bg-white p-2 rounded">
+                                          <span className="font-medium text-gray-700">Vermogen:</span>
+                                          <span className="font-bold text-orange-600">{selectedAttachment.vermogen} kW</span>
+                                        </div>
+                                      )}
+                                      {selectedAttachment.gewicht && (
+                                        <div className="flex justify-between items-center bg-white p-2 rounded">
+                                          <span className="font-medium text-gray-700">Gewicht:</span>
+                                          <span className="font-bold text-orange-600">{selectedAttachment.gewicht} kg</span>
+                                        </div>
+                                      )}
                                     </div>
                                     
                                     <div className="mt-4 p-3 bg-orange-100 rounded-lg">
                                       <p className="text-sm text-orange-800 font-medium">
-                                        ⚠️ Controleer deze instellingen op uw machine voordat u het aanbouwdeel gebruikt
+                                        ⚠️ Stel uw machine in volgens bovenstaande specificaties van het aanbouwdeel
+                                      </p>
+                                      <p className="text-xs text-orange-700 mt-1">
+                                        Zorg ervoor dat de machine werkdruk minimaal {selectedAttachment.werkdruk} bar is voor optimale werking
                                       </p>
                                     </div>
                                   </div>
@@ -446,66 +607,70 @@ export default function VisualConfigPage() {
           </div>
 
           {/* Rechts: Aanbouwdelen met Slangen */}
-          <div className="lg:col-span-4">
+          <div className="md:col-span-2 lg:col-span-4">
             <Card className="h-fit">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cable className="w-5 h-5 text-orange-600" />
-                  Aanbouwdelen & Slangen
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                  Aanbouwdelen
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {attachments.map((attachment) => (
-                    <div key={attachment.id} className="border rounded-lg p-4 bg-white">
-                      <div className="flex items-center gap-3 mb-3">
+                {attachments.length > 0 ? (
+                  <div className="space-y-6">
+                    {attachments.map((attachment) => (
+                      <div key={attachment.id} className="space-y-4">
+                        {/* Aanbouwdeel Image */}
                         {attachment.afbeelding && (
-                          <Image
-                            src={attachment.afbeelding}
-                            alt={attachment.naam}
-                            width={50}
-                            height={50}
-                            className="w-12 h-12 object-cover rounded border"
-                          />
+                          <div className="mb-6">
+                            <Image
+                              src={attachment.afbeelding}
+                              alt={attachment.naam}
+                              width={300}
+                              height={200}
+                              className="w-full h-48 object-cover rounded-lg border"
+                            />
+                          </div>
                         )}
+                        
                         <div>
-                          <p className="font-medium">{attachment.naam}</p>
-                          <p className="text-sm text-gray-600">{attachment.type}</p>
-                        </div>
-                      </div>
-                      
-                      {/* Slangen van dit aanbouwdeel */}
-                      {attachment.hydraulic_hoses && attachment.hydraulic_hoses.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-xs font-medium text-gray-700 mb-2">Slangen:</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {attachment.hydraulic_hoses.map((hose) => {
-                              const hasConnection = hydraulicInputs.some(input => input.kleur === hose.kleur);
-                              return (
-                                <div key={hose.id} className={`flex items-center gap-2 p-2 rounded border ${
-                                  hasConnection ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                                }`}>
-                                  {getKleurDisplay(hose.kleur, 'w-6 h-6')}
-                                  <div className="text-xs">
-                                    <p className="font-medium">Slang {hose.volgorde}</p>
-                                    <p className="text-gray-500 capitalize">{hose.kleur}</p>
+                          <h3 className="text-lg font-bold">Aanbouwdeel: {attachment.naam}</h3>
+                          <p className="text-gray-600">{attachment.type}</p>
+                          
+                          <div className="mt-4 space-y-3">
+                            <h4 className="font-semibold text-gray-700 mb-3">Hydraulische Slangen</h4>
+                            {attachment.hydraulic_hoses && attachment.hydraulic_hoses.length > 0 ? (
+                              attachment.hydraulic_hoses.map((hose) => (
+                                <div key={hose.id} className="flex items-center gap-3 p-4 bg-orange-50 rounded-lg border-2 border-orange-100">
+                                  {getKleurDisplay(hose.kleur, 'w-10 h-10')}
+                                  <div>
+                                    <p className="font-medium text-lg">Slang {hose.volgorde}</p>
+                                    <p className="text-sm text-gray-600 capitalize">{hose.kleur} aansluiting</p>
                                   </div>
-                                  {hasConnection && (
-                                    <div className="ml-auto">
-                                      <div className="w-2 h-2 bg-green-500 rounded-full" title="Verbonden"></div>
-                                    </div>
-                                  )}
                                 </div>
-                              );
-                            })}
+                              ))
+                            ) : (
+                              <div className="text-center py-4 text-gray-500">
+                                <p>Geen slangen geconfigureerd</p>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-xs text-gray-400">Geen slangen geconfigureerd</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        
+                        {/* Separator between attachments if multiple */}
+                        {attachments.length > 1 && attachment !== attachments[attachments.length - 1] && (
+                          <hr className="border-gray-200 my-6" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Settings className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <h3 className="text-lg font-medium mb-2">Geen aanbouwdelen gekoppeld</h3>
+                    <p className="text-sm">Deze machine heeft geen gekoppelde aanbouwdelen</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
