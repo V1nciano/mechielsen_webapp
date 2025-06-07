@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { ArrowLeft, Settings, Link, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -88,6 +88,17 @@ export default function MachineConfigAdmin() {
   const [selectedInput, setSelectedInput] = useState<HydraulicInput | null>(null);
   const [selectedHose, setSelectedHose] = useState<AttachmentHose | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  
+  // Search and filter states
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterConnection, setFilterConnection] = useState<'all' | 'connected' | 'unconnected'>('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+  
+  // Dialog search states
+  const [machineSearch, setMachineSearch] = useState('');
+  const [attachmentSearch, setAttachmentSearch] = useState('');
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -183,14 +194,17 @@ export default function MachineConfigAdmin() {
         .from('attachment_machines')
         .select(`
           *,
-          machines(*),
-          attachments(*)
+          machine:machines(*),
+          attachment:attachments(*)
         `);
 
       if (connectionsError) {
         toast.error('Fout bij ophalen koppelingen: ' + connectionsError.message);
+        console.log('Connections error:', connectionsError);
         return;
       }
+
+      console.log('Connections data:', connectionsData);
 
       // Fetch hydraulic connections
       const { data: hydraulicConnectionsData, error: hydraulicConnectionsError } = await supabase
@@ -207,6 +221,8 @@ export default function MachineConfigAdmin() {
       setMachines(machinesData || []);
       setAttachments(attachmentsData || []);
       setConnections(connectionsData || []);
+      
+      console.log('Final connections state:', connectionsData || []);
     } catch {
       toast.error('Er is een fout opgetreden bij het ophalen van gegevens');
     }
@@ -231,34 +247,24 @@ export default function MachineConfigAdmin() {
   };
 
   const connectMachineToAttachment = async (machineId: string, attachmentId: string) => {
-    if (!machineId || !attachmentId) {
-      toast.error('Selecteer zowel een machine als een aanbouwdeel');
-      return;
-    }
-
     try {
       const { error } = await supabase
         .from('attachment_machines')
-        .insert([{
-          machine_id: machineId,
-          attachment_id: attachmentId
-        }]);
+        .insert([{ machine_id: machineId, attachment_id: attachmentId }]);
 
       if (error) {
-        if (error.code === '23505') { // Unique constraint violation
-          toast.error('Deze koppeling bestaat al');
-        } else {
-          toast.error('Fout bij koppelen: ' + error.message);
-        }
+        toast.error('Fout bij verbinden: ' + error.message);
         return;
       }
 
-      toast.success('Machine succesvol gekoppeld aan aanbouwdeel!');
-      setSelectedMachine(null);
+      toast.success('Machine en aanbouwdeel succesvol verbonden!');
       setConnectDialogOpen(false);
+      setSelectedMachine(null);
+      setMachineSearch('');
+      setAttachmentSearch('');
       fetchData();
     } catch {
-      toast.error('Er is een fout opgetreden bij het koppelen');
+      toast.error('Er is een fout opgetreden bij het verbinden');
     }
   };
 
@@ -372,6 +378,70 @@ export default function MachineConfigAdmin() {
     return hydraulicConnections.find(conn => conn.attachment_hose_id === hoseId);
   };
 
+  // Filter en zoek machines
+  const filteredMachines = machines.filter(machine => {
+    const searchMatch =
+      machine.naam.toLowerCase().includes(search.toLowerCase()) ||
+      (machine.kenteken || '').toLowerCase().includes(search.toLowerCase()) ||
+      machine.type.toLowerCase().includes(search.toLowerCase());
+    const typeMatch = filterType === 'all' ? true : machine.type === filterType;
+    const gekoppeld = connections.some(c => c.machine_id === machine.id);
+    const connectionMatch =
+      filterConnection === 'all' ? true :
+      filterConnection === 'connected' ? gekoppeld :
+      !gekoppeld;
+    return searchMatch && typeMatch && connectionMatch;
+  });
+  
+  const totalPages = Math.ceil(filteredMachines.length / pageSize);
+  const pagedMachines = filteredMachines.slice((page-1)*pageSize, page*pageSize);
+  const allTypes = Array.from(new Set(machines.map(m => m.type)));
+
+  // Filter connections based on the same criteria as machines
+  const filteredConnections = connections.filter(connection => {
+    if (!connection.machine) return true;
+    
+    const searchMatch =
+      connection.machine.naam.toLowerCase().includes(search.toLowerCase()) ||
+      (connection.machine.kenteken || '').toLowerCase().includes(search.toLowerCase()) ||
+      connection.machine.type.toLowerCase().includes(search.toLowerCase()) ||
+      (connection.attachment?.naam || '').toLowerCase().includes(search.toLowerCase()) ||
+      (connection.attachment?.identificatienummer || '').toLowerCase().includes(search.toLowerCase()) ||
+      (connection.attachment?.type || '').toLowerCase().includes(search.toLowerCase());
+    
+    const typeMatch = filterType === 'all' ? true : connection.machine.type === filterType;
+    const gekoppeld = true; // connections are inherently connected
+    const connectionMatch =
+      filterConnection === 'all' ? true :
+      filterConnection === 'connected' ? gekoppeld :
+      !gekoppeld;
+    
+    return searchMatch && typeMatch && connectionMatch;
+  });
+
+  const openHydraulicConfigDialog = (connection: MachineAttachmentConnection) => {
+    setSelectedConnection(connection);
+    setHydraulicDialogOpen(true);
+    setSelectedInput(null);
+    setSelectedHose(null);
+    setIsConnecting(false);
+  };
+
+  const closeHydraulicConfigDialog = () => {
+    setSelectedConnection(null);
+    setHydraulicDialogOpen(false);
+    setSelectedInput(null);
+    setSelectedHose(null);
+    setIsConnecting(false);
+  };
+
+  const closeConnectDialog = () => {
+    setConnectDialogOpen(false);
+    setSelectedMachine(null);
+    setMachineSearch('');
+    setAttachmentSearch('');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -384,308 +454,453 @@ export default function MachineConfigAdmin() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-gray-50">
+    <div className="min-h-screen p-4 sm:p-8 bg-gradient-to-br from-gray-50 to-blue-50/30">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-            <Button
-              variant="outline"
-              onClick={() => {
-                const verified = searchParams.get('verified') || 'true';
-                const email = searchParams.get('email') || 'admin@example.com';
-                router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
-              }}
-              className="flex items-center gap-2 w-fit touch-btn"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Terug
-            </Button>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Machine-Aanbouwdeel Configuratie</h1>
-            </div>
-          </div>
-          
-          <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center gap-2 w-full sm:w-auto touch-btn">
-                <Link className="w-4 h-4" />
-                <span className="sm:inline">Nieuwe Verbinding</span>
+        {/* Improved Header */}
+        <div className="mb-8 bg-white/80 backdrop-blur-sm shadow-sm rounded-xl p-6 border border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const verified = searchParams.get('verified') || 'true';
+                  const email = searchParams.get('email') || 'admin@example.com';
+                  router.push(`/admin?verified=${verified}&email=${encodeURIComponent(email)}`);
+                }}
+                className="flex items-center gap-2 w-fit hover:bg-gray-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Terug naar Admin
               </Button>
-            </DialogTrigger>
-            <DialogContent className="w-[95vw] sm:max-w-2xl mobile-scroll">
-              <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl">Machine en Aanbouwdeel Verbinden</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div>
-                  <Label className="text-sm sm:text-base">Selecteer Machine</Label>
-                  <Select value={selectedMachine || ''} onValueChange={setSelectedMachine}>
-                    <SelectTrigger className="text-base">
-                      <SelectValue placeholder="Kies een machine..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {machines.map((machine) => (
-                        <SelectItem key={machine.id} value={machine.id}>
-                          {machine.naam} ({machine.kenteken || machine.type})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {selectedMachine && (
+              <div className="border-l border-gray-300 pl-4">
+                <h1 className="text-3xl font-bold text-gray-900 mb-1">Machine Configuratie</h1>
+                <p className="text-gray-600 text-sm">Beheer koppelingen tussen machines en aanbouwdelen</p>
+              </div>
+            </div>
+            
+            <Dialog open={connectDialogOpen} onOpenChange={(open) => {
+              if (!open) closeConnectDialog();
+              else setConnectDialogOpen(true);
+            }}>
+              <DialogTrigger asChild>
+                <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 shadow-md">
+                  <Link className="w-4 h-4" />
+                  <span>Nieuwe Koppeling</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[95vw] sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="text-xl font-semibold">Machine en Aanbouwdeel Koppelen</DialogTitle>
+                  <p className="text-gray-600 text-sm mt-2">Selecteer eerst een machine en daarna een aanbouwdeel om te koppelen</p>
+                </DialogHeader>
+                <div className="space-y-6 mt-6">
                   <div>
-                    <Label className="text-sm sm:text-base">Selecteer Aanbouwdeel</Label>
-                    <div className="grid grid-cols-1 gap-3 mt-2 max-h-60 overflow-y-auto mobile-scroll">
-                      {attachments.map((attachment) => {
-                        const isConnected = connections.some(
-                          c => c.machine_id === selectedMachine && c.attachment_id === attachment.id
-                        );
-                        
-                        return (
-                          <div 
-                            key={attachment.id} 
-                            className={`p-3 border rounded-lg cursor-pointer transition-colors tap-target ${
-                              isConnected 
-                                ? 'bg-gray-100 border-gray-300 cursor-not-allowed' 
-                                : 'hover:bg-gray-50 border-gray-200'
-                            }`}
-                            onClick={() => {
-                              if (!isConnected) {
-                                connectMachineToAttachment(selectedMachine, attachment.id);
-                              }
-                            }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-sm sm:text-base">{attachment.naam}</p>
-                                <p className="text-xs sm:text-sm text-gray-600">{attachment.type}</p>
-                                <p className="text-xs text-gray-500">
-                                  {attachment.aantal_slangen || 2} slangen
-                                </p>
+                    <label className="text-base font-medium mb-3 block">Selecteer Machine</label>
+                    <div className="space-y-3">
+                      <Input
+                        type="text"
+                        placeholder="Zoek machine op naam, kenteken of type..."
+                        value={machineSearch}
+                        onChange={e => setMachineSearch(e.target.value)}
+                        className="w-full"
+                      />
+                      <div className="max-h-48 overflow-y-auto border rounded-lg">
+                        {filteredMachines
+                          .filter(machine => 
+                            machine.naam.toLowerCase().includes(machineSearch.toLowerCase()) ||
+                            (machine.kenteken || '').toLowerCase().includes(machineSearch.toLowerCase()) ||
+                            machine.type.toLowerCase().includes(machineSearch.toLowerCase())
+                          )
+                          .map((machine) => (
+                            <div
+                              key={machine.id}
+                              className={`p-3 border-b last:border-b-0 cursor-pointer transition-colors ${
+                                selectedMachine === machine.id
+                                  ? 'bg-blue-50 border-blue-200'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                              onClick={() => setSelectedMachine(machine.id)}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-3 h-3 rounded-full ${
+                                  selectedMachine === machine.id ? 'bg-blue-500' : 'bg-gray-300'
+                                }`}></div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold">{machine.naam}</span>
+                                    {machine.kenteken && (
+                                      <Badge className="bg-blue-100 text-blue-800 text-xs">{machine.kenteken}</Badge>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600">{machine.type}</p>
+                                </div>
                               </div>
-                              {isConnected && (
-                                <Badge variant="secondary" className="text-xs">Al verbonden</Badge>
-                              )}
                             </div>
+                          ))}
+                        {filteredMachines
+                          .filter(machine => 
+                            machine.naam.toLowerCase().includes(machineSearch.toLowerCase()) ||
+                            (machine.kenteken || '').toLowerCase().includes(machineSearch.toLowerCase()) ||
+                            machine.type.toLowerCase().includes(machineSearch.toLowerCase())
+                          ).length === 0 && (
+                          <div className="p-3 text-center text-gray-500">
+                            Geen machines gevonden
                           </div>
-                        );
-                      })}
+                        )}
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
+                  
+                  {selectedMachine && (
+                    <div>
+                      <label className="text-base font-medium mb-3 block">Selecteer Aanbouwdeel</label>
+                      <div className="space-y-3">
+                        <Input
+                          type="text"
+                          placeholder="Zoek aanbouwdeel op naam, ID of type..."
+                          value={attachmentSearch}
+                          onChange={e => setAttachmentSearch(e.target.value)}
+                          className="w-full"
+                        />
+                        <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto">
+                          {attachments
+                            .filter(attachment =>
+                              attachment.naam.toLowerCase().includes(attachmentSearch.toLowerCase()) ||
+                              (attachment.identificatienummer || '').toLowerCase().includes(attachmentSearch.toLowerCase()) ||
+                              attachment.type.toLowerCase().includes(attachmentSearch.toLowerCase())
+                            )
+                            .map((attachment) => {
+                              const isConnected = connections.some(
+                                c => c.machine_id === selectedMachine && c.attachment_id === attachment.id
+                              );
+                              
+                              return (
+                                <div 
+                                  key={attachment.id} 
+                                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                    isConnected 
+                                      ? 'bg-gray-100 border-gray-300 cursor-not-allowed opacity-60' 
+                                      : 'hover:bg-blue-50 border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                                  }`}
+                                  onClick={() => {
+                                    if (!isConnected) {
+                                      connectMachineToAttachment(selectedMachine, attachment.id);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="font-semibold text-base">{attachment.naam}</p>
+                                      {attachment.identificatienummer && (
+                                        <p className="text-sm text-blue-600 font-medium">ID: {attachment.identificatienummer}</p>
+                                      )}
+                                      <p className="text-sm text-gray-600">{attachment.type}</p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {attachment.aantal_slangen || 2} hydraulische slangen
+                                      </p>
+                                    </div>
+                                    {isConnected && (
+                                      <Badge variant="secondary" className="text-xs">Al gekoppeld</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          {attachments
+                            .filter(attachment =>
+                              attachment.naam.toLowerCase().includes(attachmentSearch.toLowerCase()) ||
+                              (attachment.identificatienummer || '').toLowerCase().includes(attachmentSearch.toLowerCase()) ||
+                              attachment.type.toLowerCase().includes(attachmentSearch.toLowerCase())
+                            ).length === 0 && (
+                            <div className="p-4 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                              Geen aanbouwdelen gevonden
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* Search and Filter Section */}
+        <div className="mb-6 flex flex-col gap-4 bg-white/80 shadow-sm rounded-lg p-4 border border-gray-200">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <Input
+                type="text"
+                placeholder="Zoek op naam, kenteken of type..."
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
+                className="w-full"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Select
+                value={filterType}
+                onValueChange={(value) => { setFilterType(value); setPage(1); }}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filter op type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alle types</SelectItem>
+                  {allTypes.map(type => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filterConnection}
+                onValueChange={(value: 'all' | 'connected' | 'unconnected') => { setFilterConnection(value); setPage(1); }}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filter op koppeling" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All machines</SelectItem>
+                  <SelectItem value="connected">Met aanbouwdelen</SelectItem>
+                  <SelectItem value="unconnected">Zonder aanbouwdelen</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {search && (
+            <div className="text-sm text-gray-600">
+              {filteredMachines.length} van {machines.length} machines gevonden
+            </div>
+          )}
         </div>
 
         {/* Overzicht: alle machines met gekoppelde aanbouwdelen */}
-        <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {machines.map((machine) => {
-            const gekoppelde = connections.filter(c => c.machine_id === machine.id && (c.attachment || c.attachment_id));
-            return (
-              <Card key={machine.id} className="border-2 border-blue-100">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex flex-col gap-1">
-                    <span className="font-semibold text-base sm:text-lg">{machine.naam}</span>
-                    <div className="flex items-center gap-2">
-                      {machine.kenteken && (
-                        <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{machine.kenteken}</Badge>
-                      )}
-                      <span className="text-xs text-gray-600">{machine.type}</span>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xs text-gray-700 mb-1 font-medium">Gekoppelde aanbouwdelen:</div>
-                  {gekoppelde.length === 0 ? (
-                    <div className="text-xs text-gray-400 italic">Geen aanbouwdelen gekoppeld</div>
-                  ) : (
-                    <ul className="space-y-1">
-                      {gekoppelde.map((c) => {
-                        const attachment = c.attachment || attachments.find(a => a.id === c.attachment_id);
-                        return (
-                          <li key={c.id} className="flex items-center gap-2">
-                            <span className="font-medium">{attachment?.naam}</span>
-                            {attachment?.identificatienummer && (
-                              <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {attachment.identificatienummer}</Badge>
-                            )}
-                            <span className="text-xs text-gray-600">{attachment?.type}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Existing Connections */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {connections.map((connection) => (
-            <Card key={connection.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3 sm:pb-4">
-                <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span className="font-semibold text-base sm:text-lg">{connection.machine?.naam}</span>
-                    {connection.machine?.kenteken && (
-                      <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{connection.machine.kenteken}</Badge>
-                    )}
-                    <span className="text-xs text-gray-600">{connection.machine?.type}</span>
-                    <span className="mx-2 text-gray-400">↔</span>
-                    <span className="font-semibold text-base sm:text-lg">{connection.attachment?.naam}</span>
-                    {connection.attachment?.identificatienummer && (
-                      <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {connection.attachment.identificatienummer}</Badge>
-                    )}
-                    <span className="text-xs text-gray-600">{connection.attachment?.type}</span>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    variant="destructive"
-                    onClick={() => disconnectMachineFromAttachment(connection.id)}
-                    className="tap-target"
-                  >
-                    <Unlink className="w-4 h-4" />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                  <span className="font-medium">Machine:</span>
-                  <span>{connection.machine?.naam}</span>
-                  {connection.machine?.kenteken && (
-                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{connection.machine.kenteken}</Badge>
-                  )}
-                  <span className="mx-2 text-gray-400">|</span>
-                  <span className="font-medium">Aanbouwdeel:</span>
-                  <span>{connection.attachment?.naam}</span>
-                  {connection.attachment?.identificatienummer && (
-                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {connection.attachment.identificatienummer}</Badge>
-                  )}
-                </div>
-
-                <div>
-                  <Label className="text-xs sm:text-sm">Machine Details</Label>
-                  <div className="text-xs sm:text-sm text-gray-600">
-                    <p>{connection.machine?.type}</p>
-                    {connection.machine?.kenteken && (
-                      <p>Kenteken: {connection.machine.kenteken}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs sm:text-sm">Aanbouwdeel Details</Label>
-                  <div className="text-xs sm:text-sm text-gray-600">
-                    <p>{connection.attachment?.type}</p>
-                    <p>{connection.attachment?.aantal_slangen || 2} slangen</p>
-                  </div>
-                </div>
-
-                {/* Machine Hydraulic Inputs */}
-                <div>
-                  <Label className="text-xs sm:text-sm">Machine Inputs</Label>
-                  <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
-                    {(() => {
-                      const machine = machines.find(m => m.id === connection.machine_id);
-                      return machine?.machine_hydraulic_inputs?.map((input) => (
-                        <div key={input.id} className="flex items-center gap-1">
-                          <div className="flex items-center gap-1">
-                            <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${
-                              HYDRAULIC_KLEUREN.find(k => k.value === input.kleur)?.color
-                            } flex items-center justify-center`}>
-                              <span className={`text-xs font-bold ${
-                                HYDRAULIC_KLEUREN.find(k => k.value === input.kleur)?.textColor
-                              }`}>
-                                {input.kleur === 'rood' ? 'R' : input.kleur === 'blauw' ? 'B' : 
-                                 input.kleur === 'geel' ? 'G' : input.kleur === 'groen' ? 'GR' : 
-                                 input.kleur === 'zwart' ? 'Z' : input.kleur === 'wit' ? 'W' :
-                                 input.kleur === 'oranje' ? 'O' : 'P'}
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-xs">#{input.volgorde}</span>
-                        </div>
-                      )) || [];
-                    })()}
-                  </div>
-                </div>
-
-                {/* Attachment Hydraulic Hoses */}
-                <div>
-                  <Label className="text-xs sm:text-sm">Aanbouwdeel Slangen</Label>
-                  <div className="flex flex-wrap gap-1 sm:gap-2 mt-1">
-                    {(() => {
-                      const attachment = attachments.find(a => a.id === connection.attachment_id);
-                      return attachment?.attachment_hydraulic_hoses?.map((hose) => (
-                        <div key={hose.id} className="flex items-center gap-1">
-                          <div className="flex items-center gap-1">
-                            <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${
-                              HYDRAULIC_KLEUREN.find(k => k.value === hose.kleur)?.color
-                            } flex items-center justify-center`}>
-                              <span className={`text-xs font-bold ${
-                                HYDRAULIC_KLEUREN.find(k => k.value === hose.kleur)?.textColor
-                              }`}>
-                                {hose.kleur === 'rood' ? 'R' : hose.kleur === 'blauw' ? 'B' : 
-                                 hose.kleur === 'geel' ? 'G' : hose.kleur === 'groen' ? 'GR' : 
-                                 hose.kleur === 'zwart' ? 'Z' : hose.kleur === 'wit' ? 'W' :
-                                 hose.kleur === 'oranje' ? 'O' : 'P'}
-                              </span>
-                            </div>
-                          </div>
-                          <span className="text-xs">#{hose.volgorde}</span>
-                        </div>
-                      )) || [];
-                    })()}
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedConnection(connection);
-                      setHydraulicDialogOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2 touch-btn"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span className="text-xs sm:text-sm">Configureer Hydrauliek</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {connections.length === 0 && (
-          <div className="text-center py-8 sm:py-12">
-            <p className="text-gray-500 text-sm sm:text-base">Nog geen machine-aanbouwdeel verbindingen.</p>
-            <p className="text-xs sm:text-sm text-gray-400 mt-2">Voeg de eerste verbinding toe om te beginnen.</p>
+        {machines.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-gray-500">Nog geen machines beschikbaar</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Voeg eerst machines toe in Machine Beheer
+            </p>
           </div>
         )}
 
+        {machines.length > 0 && filteredMachines.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-gray-500">Geen machines gevonden</p>
+            <p className="text-sm text-gray-400 mt-2">
+              Probeer andere zoektermen of pas de filters aan
+            </p>
+            <Button 
+              variant="outline" 
+              className="mt-4"
+              onClick={() => {
+                setSearch('');
+                setFilterType('all');
+                setFilterConnection('all');
+                setPage(1);
+              }}
+            >
+              Filters wissen
+            </Button>
+          </div>
+        )}
+
+        {pagedMachines.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+              <div className="w-6 h-6 bg-blue-500 rounded-lg"></div>
+              Machines Overzicht
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pagedMachines.map((machine) => {
+                const gekoppelde = connections.filter(c => c.machine_id === machine.id && (c.attachment || c.attachment_id));
+                return (
+                  <Card key={machine.id} className="bg-white/90 backdrop-blur-sm border-2 border-blue-100 hover:border-blue-300 transition-all duration-200 hover:shadow-lg">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span className="font-bold text-lg text-gray-900">{machine.naam}</span>
+                        </div>
+                        <div className="flex items-center gap-2 ml-6">
+                          {machine.kenteken && (
+                            <Badge className="bg-blue-100 text-blue-800 border-blue-300 font-medium">{machine.kenteken}</Badge>
+                          )}
+                          <span className="text-sm text-gray-600 font-medium">{machine.type}</span>
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-100">
+                        <div className="text-sm text-blue-800 font-semibold mb-2">Gekoppelde aanbouwdelen:</div>
+                        {gekoppelde.length === 0 ? (
+                          <div className="text-sm text-gray-500 italic">Geen aanbouwdelen gekoppeld</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {gekoppelde.map((c) => {
+                              const attachment = c.attachment || attachments.find(a => a.id === c.attachment_id);
+                              return (
+                                <div key={c.id} className="flex items-center gap-2 p-2 bg-white rounded border border-blue-200">
+                                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                  <span className="font-medium text-sm">{attachment?.naam}</span>
+                                  {attachment?.identificatienummer && (
+                                    <Badge variant="outline" className="text-xs bg-green-100 text-green-800 border-green-300">
+                                      ID: {attachment.identificatienummer}
+                                    </Badge>
+                                  )}
+                                  <span className="text-xs text-gray-500">{attachment?.type}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {pagedMachines.length > 0 && totalPages > 1 && (
+          <div className="flex justify-center items-center gap-4 mb-8">
+            <Button
+              variant="outline"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+              className="border-gray-300 hover:bg-gray-50"
+            >
+              Vorige
+            </Button>
+            <span className="text-sm text-gray-600 bg-white px-3 py-1 rounded border">
+              Pagina {page} van {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              disabled={page === totalPages}
+              onClick={() => setPage(page + 1)}
+              className="border-gray-300 hover:bg-gray-50"
+            >
+              Volgende
+            </Button>
+          </div>
+        )}
+
+        {/* Active Connections Section */}
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-3">
+            <div className="w-6 h-6 bg-green-500 rounded-lg"></div>
+            Actieve Koppelingen
+            <Badge className="bg-green-100 text-green-800 border-green-300">
+              {filteredConnections.length}
+            </Badge>
+            {filteredConnections.length !== connections.length && (
+              <Badge className="bg-gray-100 text-gray-600 border-gray-300 text-xs">
+                van {connections.length} totaal
+              </Badge>
+            )}
+          </h2>
+          
+          {filteredConnections.length === 0 && connections.length === 0 && (
+            <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Link className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 text-lg font-medium">Nog geen koppelingen</p>
+              <p className="text-gray-400 text-sm mt-2">Maak de eerste koppeling tussen een machine en aanbouwdeel</p>
+            </div>
+          )}
+
+          {filteredConnections.length === 0 && connections.length > 0 && (
+            <div className="text-center py-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Link className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 text-lg font-medium">Geen koppelingen gevonden</p>
+              <p className="text-gray-400 text-sm mt-2">Pas je zoek- of filtercriteria aan</p>
+            </div>
+          )}
+
+          {filteredConnections.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredConnections.map((connection) => (
+                <Card 
+                  key={connection.id} 
+                  className="bg-white/90 backdrop-blur-sm border-2 border-green-100 hover:border-green-300 cursor-pointer transition-all duration-200 hover:shadow-xl group"
+                  onClick={() => openHydraulicConfigDialog(connection)}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span className="font-bold text-base">{connection.machine?.naam}</span>
+                          {connection.machine?.kenteken && (
+                            <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-xs">{connection.machine.kenteken}</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 ml-6">
+                          <div className="text-gray-400">↓</div>
+                          <span className="font-semibold text-base">{connection.attachment?.naam}</span>
+                          {connection.attachment?.identificatienummer && (
+                            <Badge className="bg-green-100 text-green-800 border-green-300 text-xs">
+                              ID: {connection.attachment.identificatienummer}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          disconnectMachineFromAttachment(connection.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity hover:shadow-md"
+                      >
+                        <Unlink className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Settings className="w-4 h-4 text-blue-600" />
+                        <p className="text-sm font-semibold text-blue-800">Hydraulische Configuratie</p>
+                      </div>
+                      <p className="text-xs text-blue-600">
+                        Klik om inputs en slangen te koppelen
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Hydraulic Configuration Dialog */}
         {selectedConnection && (
-          <Dialog open={hydraulicDialogOpen} onOpenChange={setHydraulicDialogOpen}>
-            <DialogContent className="w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto mobile-scroll">
+          <Dialog open={hydraulicDialogOpen} onOpenChange={closeHydraulicConfigDialog}>
+            <DialogContent className="w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="text-lg sm:text-xl">
+                <DialogTitle className="text-xl font-bold">
                   Hydraulische Configuratie: {selectedConnection.machine?.naam} ↔ {selectedConnection.attachment?.naam}
                 </DialogTitle>
+                <p className="text-gray-600 text-sm mt-2">Koppel machine inputs aan aanbouwdeel slangen</p>
               </DialogHeader>
               
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mt-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
                 {/* Machine Inputs */}
-                <div>
-                  <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-3">
+                <div className="bg-blue-50/50 rounded-xl p-6 border border-blue-200">
+                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-3 text-blue-800">
                     <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
                     Machine Inputs
                   </h3>
-                  <div className="space-y-3 sm:space-y-4">
+                  <div className="space-y-4">
                     {(() => {
                       const machine = machines.find(m => m.id === selectedConnection.machine_id);
                       return machine?.machine_hydraulic_inputs?.map((input) => {
@@ -696,25 +911,25 @@ export default function MachineConfigAdmin() {
                         return (
                           <div 
                             key={input.id} 
-                            className={`p-3 sm:p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md tap-target ${
+                            className={`p-4 border-2 rounded-xl cursor-pointer transition-all hover:shadow-lg ${
                               isSelected 
-                                ? 'border-blue-500 bg-blue-50 shadow-lg' 
+                                ? 'border-blue-500 bg-blue-100 shadow-lg' 
                                 : isConnected
-                                ? 'border-green-500 bg-green-50'
-                                : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
+                                ? 'border-green-500 bg-green-100'
+                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
                             }`}
                             onClick={() => handleInputClick(input)}
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 sm:gap-4">
+                              <div className="flex items-center gap-4">
                                 {getKleurDisplay(input.kleur)}
                                 <div>
-                                  <p className="font-semibold text-sm sm:text-lg">Input #{input.volgorde}</p>
+                                  <p className="font-semibold text-lg">Input #{input.volgorde}</p>
                                   {isConnected && (
-                                    <p className="text-xs sm:text-sm text-green-600 font-medium">✓ Verbonden</p>
+                                    <p className="text-sm text-green-600 font-medium">✓ Verbonden</p>
                                   )}
                                   {isSelected && (
-                                    <p className="text-xs sm:text-sm text-blue-600 font-medium">Geselecteerd</p>
+                                    <p className="text-sm text-blue-600 font-medium">Geselecteerd</p>
                                   )}
                                 </div>
                               </div>
@@ -728,7 +943,7 @@ export default function MachineConfigAdmin() {
                                       deleteHydraulicConnection(connection.id);
                                     }
                                   }}
-                                  className="opacity-70 hover:opacity-100 tap-target"
+                                  className="hover:shadow-md"
                                 >
                                   ✕
                                 </Button>
@@ -742,12 +957,12 @@ export default function MachineConfigAdmin() {
                 </div>
 
                 {/* Attachment Hoses */}
-                <div>
-                  <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-3">
+                <div className="bg-orange-50/50 rounded-xl p-6 border border-orange-200">
+                  <h3 className="text-xl font-semibold mb-6 flex items-center gap-3 text-orange-800">
                     <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
                     Aanbouwdeel Slangen
                   </h3>
-                  <div className="space-y-3 sm:space-y-4">
+                  <div className="space-y-4">
                     {(() => {
                       const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
                       return attachment?.attachment_hydraulic_hoses?.map((hose) => {
@@ -758,27 +973,27 @@ export default function MachineConfigAdmin() {
                         return (
                           <div 
                             key={hose.id} 
-                            className={`p-3 sm:p-5 border-2 rounded-xl cursor-pointer transition-all hover:shadow-md tap-target ${
+                            className={`p-4 border-2 rounded-xl cursor-pointer transition-all hover:shadow-lg ${
                               isSelected 
-                                ? 'border-orange-500 bg-orange-50 shadow-lg' 
+                                ? 'border-orange-500 bg-orange-100 shadow-lg' 
                                 : isConnected
-                                ? 'border-green-500 bg-green-50'
+                                ? 'border-green-500 bg-green-100'
                                 : isConnecting && selectedInput
                                 ? 'border-orange-300 bg-orange-50 hover:border-orange-400'
-                                : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100'
+                                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
                             }`}
                             onClick={() => handleHoseClick(hose)}
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 sm:gap-4">
+                              <div className="flex items-center gap-4">
                                 {getKleurDisplay(hose.kleur)}
                                 <div>
-                                  <p className="font-semibold text-sm sm:text-lg">Slang #{hose.volgorde}</p>
+                                  <p className="font-semibold text-lg">Slang #{hose.volgorde}</p>
                                   {isConnected && (
-                                    <p className="text-xs sm:text-sm text-green-600 font-medium">✓ Verbonden</p>
+                                    <p className="text-sm text-green-600 font-medium">✓ Verbonden</p>
                                   )}
                                   {isSelected && (
-                                    <p className="text-xs sm:text-sm text-orange-600 font-medium">Geselecteerd</p>
+                                    <p className="text-sm text-orange-600 font-medium">Geselecteerd</p>
                                   )}
                                 </div>
                               </div>
@@ -792,7 +1007,7 @@ export default function MachineConfigAdmin() {
                                       deleteHydraulicConnection(connection.id);
                                     }
                                   }}
-                                  className="opacity-70 hover:opacity-100 tap-target"
+                                  className="hover:shadow-md"
                                 >
                                   ✕
                                 </Button>
@@ -806,9 +1021,9 @@ export default function MachineConfigAdmin() {
                 </div>
               </div>
 
-              {/* Connection Lines Visualization */}
-              <div className="mt-6 sm:mt-10 p-4 sm:p-6 bg-gray-50 border rounded-xl">
-                <h4 className="font-semibold text-base sm:text-lg text-gray-800 mb-4">Actieve Verbindingen:</h4>
+              {/* Connection Status */}
+              <div className="mt-8 p-6 bg-gradient-to-r from-gray-50 to-blue-50 border rounded-xl">
+                <h4 className="font-semibold text-lg text-gray-800 mb-4">Actieve Hydraulische Verbindingen</h4>
                 {(() => {
                   const machine = machines.find(m => m.id === selectedConnection.machine_id);
                   const attachment = attachments.find(a => a.id === selectedConnection.attachment_id);
@@ -819,14 +1034,15 @@ export default function MachineConfigAdmin() {
                   
                   if (relevantConnections.length === 0) {
                     return (
-                      <p className="text-xs sm:text-sm text-gray-500 italic">
-                        Nog geen verbindingen gemaakt. Klik op een machine input om te beginnen.
-                      </p>
+                      <div className="text-center py-6">
+                        <p className="text-gray-500 mb-2">Nog geen hydraulische verbindingen</p>
+                        <p className="text-sm text-gray-400">Selecteer eerst een machine input om te beginnen</p>
+                      </div>
                     );
                   }
                   
                   return (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {relevantConnections.map((conn) => {
                         const input = machine?.machine_hydraulic_inputs?.find(i => i.id === conn.machine_input_id);
                         const hose = attachment?.attachment_hydraulic_hoses?.find(h => h.id === conn.attachment_hose_id);
@@ -834,25 +1050,25 @@ export default function MachineConfigAdmin() {
                         if (!input || !hose) return null;
                         
                         return (
-                          <div key={conn.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-white border rounded-lg space-y-3 sm:space-y-0">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                              <div className="flex items-center gap-2">
+                          <div key={conn.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <div className="flex items-center gap-6">
+                              <div className="flex items-center gap-3">
                                 {getKleurDisplay(input.kleur)}
-                                <span className="text-xs sm:text-sm font-medium">Input #{input.volgorde}</span>
+                                <span className="font-medium">Input #{input.volgorde}</span>
                               </div>
-                              <div className="text-gray-400 self-center">→</div>
-                              <div className="flex items-center gap-2">
+                              <div className="text-gray-400 text-xl">→</div>
+                              <div className="flex items-center gap-3">
                                 {getKleurDisplay(hose.kleur)}
-                                <span className="text-xs sm:text-sm font-medium">Slang #{hose.volgorde}</span>
+                                <span className="font-medium">Slang #{hose.volgorde}</span>
                               </div>
                             </div>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => deleteHydraulicConnection(conn.id)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 touch-btn"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 hover:border-red-300"
                             >
-                              <span className="text-xs sm:text-sm">Verwijder</span>
+                              Verwijder
                             </Button>
                           </div>
                         );
@@ -862,7 +1078,7 @@ export default function MachineConfigAdmin() {
                 })()}
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between gap-2 mt-6">
+              <div className="flex justify-between gap-4 mt-8">
                 <Button 
                   variant="outline" 
                   onClick={() => {
@@ -871,12 +1087,16 @@ export default function MachineConfigAdmin() {
                     setIsConnecting(false);
                   }}
                   disabled={!isConnecting}
-                  className="touch-btn"
+                  className="border-gray-300 hover:bg-gray-50"
                 >
-                  <span className="text-xs sm:text-sm">Selectie Wissen</span>
+                  Selectie Wissen
                 </Button>
-                <Button variant="outline" onClick={() => setHydraulicDialogOpen(false)} className="touch-btn">
-                  <span className="text-xs sm:text-sm">Sluiten</span>
+                <Button 
+                  variant="outline" 
+                  onClick={closeHydraulicConfigDialog}
+                  className="border-gray-300 hover:bg-gray-50"
+                >
+                  Sluiten
                 </Button>
               </div>
             </DialogContent>

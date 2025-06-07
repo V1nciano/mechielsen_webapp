@@ -67,9 +67,17 @@ interface HydraulicHose {
   debiet_rating?: number;
 }
 
+interface AttachmentMachineConnection {
+  id: string;
+  machine_id: string;
+  attachment_id: string;
+  created_at?: string;
+}
+
 export default function DashboardPage() {
   const [machines, setMachines] = useState<ExtendedMachine[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [connections, setConnections] = useState<AttachmentMachineConnection[]>([]);
   const [selectedMachine, setSelectedMachine] = useState<ExtendedMachine | null>(null);
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,6 +122,7 @@ export default function DashboardPage() {
       if (!session) {
         setMachines([]);
         setAttachments([]);
+        setConnections([]);
         setLoading(false);
         return;
       }
@@ -169,6 +178,15 @@ export default function DashboardPage() {
         setAttachments(attachmentsData);
       }
 
+      // Fetch machine-attachment connections
+      const { data: connectionsData, error: connectionsError } = await supabase
+        .from('attachment_machines')
+        .select('*');
+
+      if (!connectionsError && connectionsData) {
+        setConnections(connectionsData);
+      }
+
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -192,6 +210,21 @@ export default function DashboardPage() {
   const checkCompatibility = () => {
     if (!selectedMachine || !selectedAttachment) return null;
     
+    // First check if the machine and attachment are coupled in the database
+    const isCoupled = connections.some(conn => 
+      conn.machine_id === selectedMachine.id && conn.attachment_id === selectedAttachment.id
+    );
+    
+    if (!isCoupled) {
+      return {
+        compatible: false,
+        isCoupled: false,
+        machineInputs: selectedMachine.machine_hydraulic_inputs?.length || 0,
+        attachmentHoses: selectedAttachment.attachment_hydraulic_hoses?.length || 0,
+        pressureMatch: false
+      };
+    }
+    
     const machineInputs = selectedMachine.machine_hydraulic_inputs || [];
     const attachmentHoses = selectedAttachment.attachment_hydraulic_hoses || [];
     
@@ -201,6 +234,7 @@ export default function DashboardPage() {
     
     return {
       compatible: hasMatchingConnections && pressureCompatible,
+      isCoupled: true,
       machineInputs: machineInputs.length,
       attachmentHoses: attachmentHoses.length,
       pressureMatch: pressureCompatible
@@ -338,11 +372,18 @@ export default function DashboardPage() {
                         {compatibility?.compatible 
                           ? 'Compatibel! Deze combinatie kan worden gebruikt.' 
                           : selectedMachine && selectedAttachment 
-                            ? 'Niet compatibel - Controleer specificaties.'
+                            ? compatibility?.isCoupled === false
+                              ? 'Niet compatibel! Deze combinatie is niet mogelijk.'
+                              : 'Niet compatibel - Controleer specificaties.'
                             : 'Selecteer een machine en aanbouwdeel om compatibiliteit te checken.'
                         }
                       </h3>
-                      {compatibility && (
+                      {compatibility && compatibility.isCoupled === false && (
+                        <p className="text-xs sm:text-sm text-orange-600 mt-1 font-medium">
+                          Als je dit wel zou willen moet je via admin de machine aan de aanbouwdeel koppelen.
+                        </p>
+                      )}
+                      {compatibility && compatibility.isCoupled === true && (
                         <p className="text-xs sm:text-sm text-gray-600 mt-1">
                           Machine inputs: {compatibility.machineInputs} | 
                           Attachment hoses: {compatibility.attachmentHoses} | 
@@ -353,7 +394,7 @@ export default function DashboardPage() {
                   </div>
                   {selectedMachine && selectedAttachment && compatibility?.compatible && (
                     <Button 
-                      onClick={() => router.push(`/dashboard/machines/${selectedMachine.id}/visual-config`)}
+                      onClick={() => router.push(`/dashboard/machines/${selectedMachine.id}/visual-config?attachmentId=${selectedAttachment.id}`)}
                       className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
                     >
                       Configureren
