@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Settings, LogOut, QrCode, Search, CheckCircle, XCircle, Link, Camera } from 'lucide-react';
+import { Settings, LogOut, QrCode, Search, CheckCircle, XCircle, Link, Tractor } from 'lucide-react';
 import Image from 'next/image';
 import type { User } from '@supabase/auth-helpers-nextjs';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +52,7 @@ interface Attachment {
   debiet?: number;
   vermogen?: number;
   aantal_slangen?: number;
+  identificatienummer?: string;
   attachment_hydraulic_hoses?: HydraulicHose[];
 }
 
@@ -371,7 +372,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-3 sm:pb-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
                 <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                  <Camera className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Tractor className="w-4 h-4 sm:w-5 sm:h-5" />
                   Machines
                 </CardTitle>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -477,7 +478,7 @@ export default function DashboardPage() {
                       }}
                     >
                       <CardContent className="p-3 sm:p-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-row items-center gap-3">
                           {machine.afbeelding && (
                             <div className="w-12 h-12 sm:w-16 sm:h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                               <Image
@@ -489,12 +490,17 @@ export default function DashboardPage() {
                               />
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm sm:text-base truncate">{machine.naam}</h4>
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-sm sm:text-base truncate">{machine.naam}</h4>
+                              {machine.kenteken && (
+                                <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{machine.kenteken}</Badge>
+                              )}
+                            </div>
                             <p className="text-xs sm:text-sm text-gray-600 truncate">{machine.type}</p>
-                            <p className="text-xs text-gray-500">
-                              {machine.hydraulische_inputs} inputs
-                            </p>
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-xs text-gray-500">{machine.hydraulische_inputs} inputs</span>
+                            </div>
                           </div>
                         </div>
                       </CardContent>
@@ -617,7 +623,7 @@ export default function DashboardPage() {
                       }}
                     >
                       <CardContent className="p-3 sm:p-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-row items-center gap-3">
                           {attachment.afbeelding && (
                             <div className="w-12 h-12 sm:w-16 sm:h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                               <Image
@@ -629,12 +635,18 @@ export default function DashboardPage() {
                               />
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm sm:text-base truncate">{attachment.naam}</h4>
+                          <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-sm sm:text-base truncate">{attachment.naam}</h4>
+                              {attachment.identificatienummer && (
+                                <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {attachment.identificatienummer}</Badge>
+                              )}
+                            </div>
                             <p className="text-xs sm:text-sm text-gray-600 truncate">{attachment.type}</p>
-                            <p className="text-xs text-gray-500">
-                              {attachment.werkdruk} bar | {attachment.gewicht} kg
-                            </p>
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-xs text-gray-500">{attachment.werkdruk} bar</span>
+                              <span className="text-xs text-gray-500">{attachment.gewicht} kg</span>
+                            </div>
                           </div>
                         </div>
                       </CardContent>

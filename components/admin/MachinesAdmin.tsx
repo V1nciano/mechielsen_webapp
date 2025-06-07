@@ -676,116 +676,116 @@ export default function MachinesAdmin() {
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Machines Beheren</h1>
           </div>
           
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
+            <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+              <DialogTrigger asChild>
               <Button className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
-                Nieuwe Machine
-              </Button>
-            </DialogTrigger>
+                  Nieuwe Machine
+                </Button>
+              </DialogTrigger>
             <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Nieuwe Machine Toevoegen</DialogTitle>
-              </DialogHeader>
+                <DialogHeader>
+                  <DialogTitle>Nieuwe Machine Toevoegen</DialogTitle>
+                </DialogHeader>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <Label htmlFor="naam">Naam</Label>
-                  <Input
-                    id="naam"
-                    value={newMachine.naam || ''}
-                    onChange={(e) => setNewMachine({...newMachine, naam: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="type">Type</Label>
-                  <Input
-                    id="type"
-                    value={newMachine.type || ''}
-                    onChange={(e) => setNewMachine({...newMachine, type: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="kenteken">Kenteken</Label>
-                  <Input
-                    id="kenteken"
-                    value={newMachine.kenteken || ''}
-                    onChange={(e) => setNewMachine({...newMachine, kenteken: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="hydraulische_inputs">Hydraulische Inputs</Label>
-                  <Select 
-                    value={newMachine.hydraulische_inputs?.toString() || '2'} 
-                    onValueChange={(value) => setNewMachine({...newMachine, hydraulische_inputs: parseInt(value)})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 Input</SelectItem>
-                      <SelectItem value="2">2 Inputs</SelectItem>
-                      <SelectItem value="3">3 Inputs</SelectItem>
-                      <SelectItem value="4">4 Inputs</SelectItem>
-                      <SelectItem value="6">6 Inputs</SelectItem>
-                      <SelectItem value="8">8 Inputs</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div>
+                    <Label htmlFor="naam">Naam</Label>
+                    <Input
+                      id="naam"
+                      value={newMachine.naam || ''}
+                      onChange={(e) => setNewMachine({...newMachine, naam: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="type">Type</Label>
+                    <Input
+                      id="type"
+                      value={newMachine.type || ''}
+                      onChange={(e) => setNewMachine({...newMachine, type: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="kenteken">Kenteken</Label>
+                    <Input
+                      id="kenteken"
+                      value={newMachine.kenteken || ''}
+                      onChange={(e) => setNewMachine({...newMachine, kenteken: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="hydraulische_inputs">Hydraulische Inputs</Label>
+                    <Select 
+                      value={newMachine.hydraulische_inputs?.toString() || '2'} 
+                      onValueChange={(value) => setNewMachine({...newMachine, hydraulische_inputs: parseInt(value)})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 Input</SelectItem>
+                        <SelectItem value="2">2 Inputs</SelectItem>
+                        <SelectItem value="3">3 Inputs</SelectItem>
+                        <SelectItem value="4">4 Inputs</SelectItem>
+                        <SelectItem value="6">6 Inputs</SelectItem>
+                        <SelectItem value="8">8 Inputs</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="col-span-2">
-                  <Label htmlFor="beschrijving">Beschrijving</Label>
-                  <Textarea
-                    id="beschrijving"
-                    value={newMachine.beschrijving || ''}
-                    onChange={(e) => setNewMachine({...newMachine, beschrijving: e.target.value})}
-                  />
-                </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="beschrijving">Beschrijving</Label>
+                    <Textarea
+                      id="beschrijving"
+                      value={newMachine.beschrijving || ''}
+                      onChange={(e) => setNewMachine({...newMachine, beschrijving: e.target.value})}
+                    />
+                  </div>
 
-                <div>
-                  <Label htmlFor="gewicht">Gewicht (kg)</Label>
-                  <Input
-                    id="gewicht"
-                    inputMode="numeric"
-                    value={newMachine.gewicht || ''}
-                    onChange={(e) => setNewMachine({...newMachine, gewicht: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="werkdruk">Werkdruk (bar)</Label>
-                  <Input
-                    id="werkdruk"
-                    inputMode="numeric"
-                    value={newMachine.werkdruk || ''}
-                    onChange={(e) => setNewMachine({...newMachine, werkdruk: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="max_druk">Max Druk (bar)</Label>
-                  <Input
-                    id="max_druk"
-                    inputMode="numeric"
-                    value={newMachine.max_druk || ''}
-                    onChange={(e) => setNewMachine({...newMachine, max_druk: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="debiet">Debiet (l/min)</Label>
-                  <Input
-                    id="debiet"
-                    inputMode="numeric"
-                    value={newMachine.debiet || ''}
-                    onChange={(e) => setNewMachine({...newMachine, debiet: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="vermogen">Vermogen (kW)</Label>
-                  <Input
-                    id="vermogen"
-                    inputMode="numeric"
-                    value={newMachine.vermogen || ''}
-                    onChange={(e) => setNewMachine({...newMachine, vermogen: parseInt(e.target.value) || 0})}
-                  />
-                </div>
+                  <div>
+                    <Label htmlFor="gewicht">Gewicht (kg)</Label>
+                    <Input
+                      id="gewicht"
+                      inputMode="numeric"
+                      value={newMachine.gewicht || ''}
+                      onChange={(e) => setNewMachine({...newMachine, gewicht: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="werkdruk">Werkdruk (bar)</Label>
+                    <Input
+                      id="werkdruk"
+                      inputMode="numeric"
+                      value={newMachine.werkdruk || ''}
+                      onChange={(e) => setNewMachine({...newMachine, werkdruk: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="max_druk">Max Druk (bar)</Label>
+                    <Input
+                      id="max_druk"
+                      inputMode="numeric"
+                      value={newMachine.max_druk || ''}
+                      onChange={(e) => setNewMachine({...newMachine, max_druk: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="debiet">Debiet (l/min)</Label>
+                    <Input
+                      id="debiet"
+                      inputMode="numeric"
+                      value={newMachine.debiet || ''}
+                      onChange={(e) => setNewMachine({...newMachine, debiet: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="vermogen">Vermogen (kW)</Label>
+                    <Input
+                      id="vermogen"
+                      inputMode="numeric"
+                      value={newMachine.vermogen || ''}
+                      onChange={(e) => setNewMachine({...newMachine, vermogen: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
 
                 {/* Image Upload Section for Edit */}
                 <div className="col-span-2">
@@ -802,7 +802,7 @@ export default function MachinesAdmin() {
                             <span className="text-xs text-gray-400">
                               JPG, PNG (max 5MB)
                             </span>
-                          </div>
+                </div>
                         </div>
                         <input
                           id="machine-image"
@@ -842,14 +842,14 @@ export default function MachinesAdmin() {
               </div>
               <div className="flex flex-col sm:flex-row justify-end gap-2 mt-6">
                 <Button variant="outline" onClick={() => setAddDialogOpen(false)} className="w-full sm:w-auto">
-                  Annuleren
-                </Button>
+                    Annuleren
+                  </Button>
                 <Button onClick={addNewMachine} className="w-full sm:w-auto">
-                  Machine Toevoegen
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+                    Machine Toevoegen
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
         </div>
 
         {/* Machines Grid */}
@@ -925,7 +925,7 @@ export default function MachinesAdmin() {
                             <div key={input.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg border gap-3">
                               <div className="flex items-center gap-3">
                                 {getKleurDisplay(input.kleur)}
-                                <p className="font-medium">Input {input.input_nummer}</p>
+                                  <p className="font-medium">Input {input.input_nummer}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Select 
@@ -947,7 +947,7 @@ export default function MachinesAdmin() {
                                   </SelectContent>
                                 </Select>
                                 <Button 
-                                  size="sm"
+                                  size="sm" 
                                   variant="destructive"
                                   onClick={() => deleteHydraulicInput(input.id)}
                                 >
@@ -956,53 +956,53 @@ export default function MachinesAdmin() {
                               </div>
                             </div>
                           ))}
-                          
+
                           {/* Add New Input */}
                           <div className="border-t pt-4 mt-4">
-                            <h4 className="font-medium mb-3">Nieuwe Input Toevoegen</h4>
+                          <h4 className="font-medium mb-3">Nieuwe Input Toevoegen</h4>
                             <div className="flex flex-col sm:flex-row gap-3">
                               <div className="w-full sm:w-24">
                                 <Label>Nummer</Label>
-                                <Input
+                              <Input
                                   type="number"
-                                  value={newHydraulicInput.input_nummer || ''}
+                                value={newHydraulicInput.input_nummer || ''}
                                   onChange={(e) => setNewHydraulicInput({
                                     ...newHydraulicInput,
                                     input_nummer: parseInt(e.target.value) || 1
                                   })}
                                   min="1"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <Label>Kleur</Label>
-                                <Select 
-                                  value={newHydraulicInput.kleur || 'rood'} 
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <Label>Kleur</Label>
+                              <Select 
+                                value={newHydraulicInput.kleur || 'rood'} 
                                   onValueChange={(value) => setNewHydraulicInput({
                                     ...newHydraulicInput,
                                     kleur: value
                                   })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {HYDRAULIC_KLEUREN.map((kleur) => (
-                                      <SelectItem key={kleur.value} value={kleur.value}>
-                                        <div className="flex items-center gap-2">
-                                          <div className={`w-4 h-4 rounded-full ${kleur.color}`}></div>
-                                          <span>{kleur.label}</span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <Button 
-                                onClick={() => addHydraulicInput(machine.id)}
-                                className="w-full sm:w-auto sm:self-end"
                               >
-                                Toevoegen
-                              </Button>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {HYDRAULIC_KLEUREN.map((kleur) => (
+                                    <SelectItem key={kleur.value} value={kleur.value}>
+                                      <div className="flex items-center gap-2">
+                                        <div className={`w-4 h-4 rounded-full ${kleur.color}`}></div>
+                                        <span>{kleur.label}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button 
+                              onClick={() => addHydraulicInput(machine.id)}
+                                className="w-full sm:w-auto sm:self-end"
+                            >
+                              Toevoegen
+                            </Button>
                             </div>
                           </div>
                         </div>
@@ -1010,26 +1010,26 @@ export default function MachinesAdmin() {
                     </Dialog>
                   </div>
                   
-                  {machine.hydraulic_inputs && machine.hydraulic_inputs.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        {machine.hydraulic_inputs.map((input) => (
+                    {machine.hydraulic_inputs && machine.hydraulic_inputs.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          {machine.hydraulic_inputs.map((input) => (
                           <div key={input.id} 
                                className="flex items-center gap-2 p-2 bg-white rounded-lg border shadow-sm">
-                            {getKleurDisplay(input.kleur)}
+                              {getKleurDisplay(input.kleur)}
                             <span className="text-sm font-medium">
                               Input {input.input_nummer}
                             </span>
-                          </div>
-                        ))}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    ) : (
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                       <p className="text-sm text-yellow-800">⚠️ Geen inputs geconfigureerd</p>
                       <p className="text-xs text-yellow-600">Klik op configureren om te beginnen</p>
-                    </div>
-                  )}
+                      </div>
+                    )}
                 </div>
 
                 {/* Technical Specs */}

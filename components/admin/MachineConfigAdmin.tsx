@@ -33,6 +33,7 @@ interface Attachment {
   id: string;
   naam: string;
   type: string;
+  identificatienummer?: string;
   aantal_slangen?: number;
   attachment_hydraulic_hoses?: AttachmentHose[];
 }
@@ -163,6 +164,7 @@ export default function MachineConfigAdmin() {
         .from('attachments')
         .select(`
           *,
+          identificatienummer,
           attachment_hydraulic_hoses(id, kleur, volgorde)
         `)
         .order('naam', { ascending: true });
@@ -181,8 +183,8 @@ export default function MachineConfigAdmin() {
         .from('attachment_machines')
         .select(`
           *,
-          machines(naam),
-          attachments(naam)
+          machines(*),
+          attachments(*)
         `);
 
       if (connectionsError) {
@@ -477,15 +479,68 @@ export default function MachineConfigAdmin() {
           </Dialog>
         </div>
 
+        {/* Overzicht: alle machines met gekoppelde aanbouwdelen */}
+        <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {machines.map((machine) => {
+            const gekoppelde = connections.filter(c => c.machine_id === machine.id && (c.attachment || c.attachment_id));
+            return (
+              <Card key={machine.id} className="border-2 border-blue-100">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex flex-col gap-1">
+                    <span className="font-semibold text-base sm:text-lg">{machine.naam}</span>
+                    <div className="flex items-center gap-2">
+                      {machine.kenteken && (
+                        <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{machine.kenteken}</Badge>
+                      )}
+                      <span className="text-xs text-gray-600">{machine.type}</span>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xs text-gray-700 mb-1 font-medium">Gekoppelde aanbouwdelen:</div>
+                  {gekoppelde.length === 0 ? (
+                    <div className="text-xs text-gray-400 italic">Geen aanbouwdelen gekoppeld</div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {gekoppelde.map((c) => {
+                        const attachment = c.attachment || attachments.find(a => a.id === c.attachment_id);
+                        return (
+                          <li key={c.id} className="flex items-center gap-2">
+                            <span className="font-medium">{attachment?.naam}</span>
+                            {attachment?.identificatienummer && (
+                              <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {attachment.identificatienummer}</Badge>
+                            )}
+                            <span className="text-xs text-gray-600">{attachment?.type}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
         {/* Existing Connections */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {connections.map((connection) => (
             <Card key={connection.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3 sm:pb-4">
                 <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
-                  <span className="text-base sm:text-lg line-clamp-2">
-                    {connection.machine?.naam} ↔ {connection.attachment?.naam}
-                  </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span className="font-semibold text-base sm:text-lg">{connection.machine?.naam}</span>
+                    {connection.machine?.kenteken && (
+                      <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{connection.machine.kenteken}</Badge>
+                    )}
+                    <span className="text-xs text-gray-600">{connection.machine?.type}</span>
+                    <span className="mx-2 text-gray-400">↔</span>
+                    <span className="font-semibold text-base sm:text-lg">{connection.attachment?.naam}</span>
+                    {connection.attachment?.identificatienummer && (
+                      <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {connection.attachment.identificatienummer}</Badge>
+                    )}
+                    <span className="text-xs text-gray-600">{connection.attachment?.type}</span>
+                  </div>
                   <Button 
                     size="sm" 
                     variant="destructive"
@@ -497,6 +552,20 @@ export default function MachineConfigAdmin() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                  <span className="font-medium">Machine:</span>
+                  <span>{connection.machine?.naam}</span>
+                  {connection.machine?.kenteken && (
+                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">{connection.machine.kenteken}</Badge>
+                  )}
+                  <span className="mx-2 text-gray-400">|</span>
+                  <span className="font-medium">Aanbouwdeel:</span>
+                  <span>{connection.attachment?.naam}</span>
+                  {connection.attachment?.identificatienummer && (
+                    <Badge variant="outline" className="text-xs bg-blue-100 text-blue-800 border-blue-300">ID: {connection.attachment.identificatienummer}</Badge>
+                  )}
+                </div>
+
                 <div>
                   <Label className="text-xs sm:text-sm">Machine Details</Label>
                   <div className="text-xs sm:text-sm text-gray-600">

@@ -35,6 +35,7 @@ interface Attachment {
   aantal_slangen?: number;
   afbeelding?: string;
   created_at: string;
+  identificatienummer?: string;
   machines?: Machine[];
   hydraulic_hoses?: HydraulicHose[];
   imageFile?: File;
@@ -214,6 +215,7 @@ const AttachmentsAdmin: React.FC = () => {
         debiet: editForm.debiet,
         vermogen: editForm.vermogen,
         aantal_slangen: editForm.aantal_slangen,
+        identificatienummer: editForm.identificatienummer,
         afbeelding: imageUrl
       };
       
@@ -249,7 +251,8 @@ const AttachmentsAdmin: React.FC = () => {
           max_druk: newAttachment.max_druk,
           debiet: newAttachment.debiet,
           vermogen: newAttachment.vermogen,
-          aantal_slangen: newAttachment.aantal_slangen
+          aantal_slangen: newAttachment.aantal_slangen,
+          identificatienummer: newAttachment.identificatienummer
         }])
         .select()
         .single();
@@ -628,7 +631,7 @@ const AttachmentsAdmin: React.FC = () => {
                 <p className="text-sm text-gray-600">Vul de onderstaande gegevens in om een nieuw aanbouwdeel toe te voegen.</p>
               </DialogHeader>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-                <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                <div className="space-y-1.5">
                   <Label htmlFor="naam" className="text-sm sm:text-base">Naam</Label>
                   <Input
                     id="naam"
@@ -636,6 +639,16 @@ const AttachmentsAdmin: React.FC = () => {
                     onChange={(e) => setNewAttachment({...newAttachment, naam: e.target.value})}
                     className="w-full text-base"
                     placeholder="Voer de naam in"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="identificatienummer" className="text-sm sm:text-base">Identificatienummer</Label>
+                  <Input
+                    id="identificatienummer"
+                    value={newAttachment.identificatienummer || ''}
+                    onChange={(e) => setNewAttachment({...newAttachment, identificatienummer: e.target.value})}
+                    className="w-full text-base"
+                    placeholder="Voer het identificatienummer in"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -810,7 +823,12 @@ const AttachmentsAdmin: React.FC = () => {
             <Card key={attachment.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="pb-3">
                 <CardTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="truncate font-semibold">{attachment.naam}</span>
+                  <div className="flex flex-col">
+                    <span className="truncate font-semibold">{attachment.naam}</span>
+                    {attachment.identificatienummer && (
+                      <span className="text-xs text-gray-500">ID: {attachment.identificatienummer}</span>
+                    )}
+                  </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => startEditing(attachment)}>
                       <Edit className="w-4 h-4" />
@@ -974,6 +992,15 @@ const AttachmentsAdmin: React.FC = () => {
                     id="edit-naam"
                     value={editForm.naam || ''}
                     onChange={(e) => setEditForm({...editForm, naam: e.target.value})}
+                    className="text-base"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-identificatienummer" className="text-sm sm:text-base">Identificatienummer</Label>
+                  <Input
+                    id="edit-identificatienummer"
+                    value={editForm.identificatienummer || ''}
+                    onChange={(e) => setEditForm({...editForm, identificatienummer: e.target.value})}
                     className="text-base"
                   />
                 </div>
