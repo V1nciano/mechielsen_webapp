@@ -43,7 +43,14 @@ interface AttachmentHose {
   volgorde: number;
 }
 
-
+interface HydraulicConnection {
+  id: string;
+  machine_id: string;
+  attachment_id: string;
+  machine_input_id: string;
+  attachment_hose_id: string;
+  functie_beschrijving?: string;
+}
 
 interface Connection {
   id: string;
@@ -54,6 +61,7 @@ interface Connection {
   attachmentNaam: string;
   hoseKleur: string;
   hoseVolgorde: number;
+  isConfigured: boolean;
 }
 
 const KLEUREN = [
@@ -76,6 +84,7 @@ export default function VisualConfigPage() {
   const [machine, setMachine] = useState<Machine | null>(null);
   const [hydraulicInputs, setHydraulicInputs] = useState<HydraulicInput[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [hydraulicConnections, setHydraulicConnections] = useState<HydraulicConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
@@ -149,6 +158,20 @@ export default function VisualConfigPage() {
         setAttachments(coupledAttachments);
       }
 
+      // Fetch hydraulic connections for this machine
+      const { data: hydraulicConnectionsData, error: hydraulicConnectionsError } = await supabase
+        .from('hydraulic_connections')
+        .select('*')
+        .eq('machine_id', machineId);
+
+      if (hydraulicConnectionsError) {
+        // Table might not exist yet, that's okay
+        console.log('No hydraulic connections found:', hydraulicConnectionsError);
+        setHydraulicConnections([]);
+      } else {
+        setHydraulicConnections(hydraulicConnectionsData || []);
+      }
+
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -175,27 +198,29 @@ export default function VisualConfigPage() {
     );
   };
 
-  const getMatchingConnections = (): Connection[] => {
+  const getConfiguredConnections = (): Connection[] => {
     const connections: Connection[] = [];
     
-    hydraulicInputs.forEach(input => {
-      attachments.forEach(attachment => {
-        attachment.hydraulic_hoses?.forEach(hose => {
-          if (input.kleur === hose.kleur) {
-            const connectionId = `${input.id}-${hose.id}`;
-            connections.push({
-              id: connectionId,
-              inputId: input.id,
-              inputKleur: input.kleur,
-              inputNummer: input.input_nummer,
-              attachmentId: attachment.id,
-              attachmentNaam: attachment.naam,
-              hoseKleur: hose.kleur,
-              hoseVolgorde: hose.volgorde
-            });
-          }
+    // Add all configured hydraulic connections from admin
+    hydraulicConnections.forEach(hydraulicConn => {
+      const input = hydraulicInputs.find(i => i.id === hydraulicConn.machine_input_id);
+      const attachment = attachments.find(a => a.id === hydraulicConn.attachment_id);
+      const hose = attachment?.hydraulic_hoses?.find(h => h.id === hydraulicConn.attachment_hose_id);
+      
+      if (input && attachment && hose) {
+        const connectionId = `${input.id}-${hose.id}`;
+        connections.push({
+          id: connectionId,
+          inputId: input.id,
+          inputKleur: input.kleur,
+          inputNummer: input.input_nummer,
+          attachmentId: attachment.id,
+          attachmentNaam: attachment.naam,
+          hoseKleur: hose.kleur,
+          hoseVolgorde: hose.volgorde,
+          isConfigured: true
         });
-      });
+      }
     });
     
     return connections;
@@ -223,7 +248,7 @@ export default function VisualConfigPage() {
     );
   }
 
-  const connections = getMatchingConnections();
+  const connections = getConfiguredConnections();
 
   return (
     <div className="min-h-screen p-4 md:p-8 bg-gray-50">
@@ -305,18 +330,18 @@ export default function VisualConfigPage() {
                 {connections.length > 0 ? (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 mb-4">
-                      Gevonden verbindingen op basis van kleurcodering:
+                      Geconfigureerde verbindingen uit admin beheer:
                     </p>
-                    {connections.map((conn, index) => {
-                      const isChecked = connectionStatuses[conn.id] || false;
-                      return (
-                        <div key={index} className={`relative p-2 lg:p-3 rounded-lg border-2 transition-all shadow-sm ${
-                          isChecked 
-                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-green-100' 
-                            : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
-                        }`}>
-                          {/* Connection visual flow */}
-                          <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 lg:gap-3">
+                                          {connections.map((conn, index) => {
+                        const isChecked = connectionStatuses[conn.id] || false;
+                        return (
+                                                    <div key={index} className={`relative p-2 lg:p-3 rounded-lg border-2 transition-all shadow-sm ${
+                            isChecked 
+                              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-green-100' 
+                              : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-md'
+                          }`}>
+                            {/* Connection visual flow */}
+                            <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 lg:gap-3">
                             {/* Machine Input */}
                             <div className="flex items-center gap-1.5 bg-blue-50 px-2 py-1.5 sm:px-2.5 rounded-md border border-blue-200 min-w-0 flex-1 sm:flex-none sm:w-auto lg:min-w-[130px]">
                               {getKleurDisplay(conn.inputKleur, 'w-7 h-7 lg:w-8 lg:h-8')}
